@@ -38,11 +38,26 @@ class Vaults(unittest.TestCase):
         self.assertEqual([v["path"] for v in same], ["/a/vault"])
         self.assertEqual([v["name"] for v in apart], ["vault", "b"])
 
+    def test_a_relative_path_is_skipped_and_a_home_path_is_made_absolute(self):
+        with mock.patch("sys.stderr"):
+            got = config.parse_vaults([{"path": "notes/vault"}, {"path": "~/vault"}])
+        self.assertEqual([v["path"] for v in got], [str(Path.home() / "vault")])
+
 
 class Extract(unittest.TestCase):
     def test_links_drop_alias_heading_folder_and_extension(self):
         text = "[[회의록]] [[폴더/설계|보이는 이름]] ![[그림 노트#제목]] [[Notes.md]] [[블록^abc]]"
         self.assertEqual(obsidian.extract(text)["links"], ["회의록", "설계", "그림 노트", "notes", "블록"])
+
+    def test_a_link_in_a_table_escapes_the_bar_before_its_alias(self):
+        self.assertEqual(obsidian.extract("| [[회의록\\|표시]] | [[설계]] |")["links"], ["회의록", "설계"])
+
+    def test_names_are_compared_composed(self):
+        import unicodedata
+        nfd = unicodedata.normalize("NFD", "회의록")
+        self.assertNotEqual(nfd, "회의록")
+        self.assertEqual(obsidian.extract(f"[[{nfd}]] #{nfd}"), {**obsidian.extract(""), "links": ["회의록"], "tags": ["회의록"]})
+        self.assertEqual(obsidian.fold(nfd), obsidian.fold("회의록"))
 
     def test_tags_come_from_the_body_and_the_front_matter(self):
         text = "---\ntags: [Alpha, beta]\n---\n# 제목\n#설계 줄 끝 #team/web.\nhttps://example.com/#top #123 a#b ##x\n"
@@ -124,6 +139,21 @@ class Scan(unittest.TestCase):
         (note,) = obsidian.scan(time.time())
         self.assertEqual((note["tags"], note["keys"]), (["앞"], []))
 
+    def test_a_word_the_cut_splits_is_dropped_whole(self):
+        head = "#앞 "
+        fill = "x" * (obsidian.READ_BYTES - len(head.encode()) - len(" ABC-12"))
+        write(self.vault / "cut.md", f"{head}{fill} ABC-123 뒤")           # the cut falls between ABC-12 and 3
+        write(self.vault / "fits.md", f"{head}{fill[:-4]} ABC-123")         # ends before the cut: nothing is dropped
+        notes = {n["rel"]: n for n in obsidian.scan(time.time())}
+        self.assertEqual((notes["cut.md"]["tags"], notes["cut.md"]["keys"]), (["앞"], []))
+        self.assertEqual(notes["fits.md"]["keys"], ["ABC-123"])
+
+    def test_a_file_dated_in_the_future_counts_as_edited_now(self):
+        write(self.vault / "future.md", age=-3600)
+        now = time.time()
+        (note,) = obsidian.scan(now)
+        self.assertEqual(note["at"], now)
+
     def test_a_missing_vault_is_skipped(self):
         self.vaults.insert(0, {"name": "gone", "path": str(self.root / "gone"), "profile": "개인"})
         write(self.vault / "keep.md")
@@ -202,6 +232,31 @@ class Graph(unittest.TestCase):
         self.assertEqual(self.nodes["obsidian:vault:ABC-9 설계.md"]["detail"]["unit"], "jira:ABC-9")
         self.assertTrue(self.linked("obsidian:vault:ABC-9 설계.md", "jira:ABC-9"))
         self.assertNotIn("jira:XY-1", self.nodes)
+
+    def test_a_ticket_a_review_request_made_joins_the_unit_its_title_key_names(self):
+        self.requests = [{"html_url": "https://github.com/o/r/pull/3", "number": 3, "title": "ABC-44 fix login",
+                          "repository_url": "https://api.github.com/repos/o/r", "updated_at": self.iso(600),
+                          "user": {"login": "peer"}}]
+        self.build()
+        self.assertEqual(self.nodes["jira:ABC-44"]["detail"]["unit"], "common")   # without a note: no unit of its own
+        write(self.vault / "ABC-44 조사.md")
+        self.build()
+        self.assertEqual(self.nodes["jira:ABC-44"]["detail"]["unit"], "jira:ABC-44")
+        self.assertEqual(self.nodes["obsidian:vault:ABC-44 조사.md"]["detail"]["unit"], "jira:ABC-44")
+
+    def test_a_future_dated_note_does_not_outshine_the_scale(self):
+        write(self.vault / "future.md", age=-3600)
+        g = self.build()
+        self.assertLessEqual(self.nodes["obsidian:vault:future.md"]["detail"]["act"], 1.0)
+        self.assertLessEqual(g["focus_level"], 1.0)
+
+    def test_a_link_finds_a_note_whose_file_name_is_stored_decomposed(self):
+        import unicodedata
+        write(self.vault / (unicodedata.normalize("NFD", "회의록") + ".md"))
+        write(self.vault / "가.md", "[[회의록]]")
+        self.build()
+        other = next(i for i in self.nodes if i.startswith("obsidian:vault:") and i != "obsidian:vault:가.md")
+        self.assertTrue(self.linked("obsidian:vault:가.md", other))
 
     def test_a_key_in_the_body_only_links(self):
         self.tickets["ABC-5"] = {"summary": "키 회전", "status": "진행 중", "updated": self.iso(7200), "mine": True}

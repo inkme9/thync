@@ -17,7 +17,7 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 
 ## 설정 키
 
-설정 파일을 생략했을 때의 기본값입니다. **예제 파일은 `claude_code`, `codex`, `obsidian`을 제외한 세 출처만 사용합니다.** 세션 로그도 읽으려면 `sources`에 직접 추가합니다.
+설정 파일을 생략했을 때의 기본값입니다. **예제 파일은 `claude_code`와 `codex`를 제외한 네 출처만 사용합니다.** 세션 로그도 읽으려면 `sources`에 직접 추가합니다.
 
 ```json
 {
@@ -63,7 +63,7 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 flowchart LR
     A["devbox1: Claude Code 세션 로그"] --> TA["devbox1 의 thync<br>/sessions.json"]
     B["devbox2: Claude Code 세션 로그"] --> TB["devbox2 의 thync<br>/sessions.json"]
-    TA -- "SSH 터널" --> H["노트북의 thync (허브)<br>GitHub · Jira · Notion · 칸반"]
+    TA -- "SSH 터널" --> H["노트북의 thync (허브)<br>GitHub · Jira · Notion · Obsidian · 칸반"]
     TB -- "SSH 터널" --> H
     H --> W["브라우저 localhost:8765"]
 ```
@@ -85,7 +85,7 @@ flowchart LR
 - **프로필**: 다른 서버의 세션이 회사인지 개인인지는 그 서버의 `company_roots`로 정합니다. 허브의 `company_roots`는 허브 자신의 세션에만 씁니다.
 - **선택 대기 질문**: 화면에서 고른 답은 그 세션이 있는 서버의 thync 로 넘어갑니다. 그 서버에 질문 hook 이 등록되어 있어야 합니다([사용법](usage.md#선택-대기-질문에-thync-에서-답하기-pretooluse-hook)).
 - **PR 맡기기**: `reflex_host`를 주면 그 서버의 저장소와 tmux 에서 Claude 가 돕니다. 칸반의 맡긴 일 카드에는 `ssh -t <호스트> tmux attach -t <이름>`이 보입니다.
-- **GitHub·Jira·Notion·칸반·이름 바꾸기**: 허브의 설정과 `~/.thync`를 씁니다. 서버의 thync 가 이 출처를 켜 두어도 허브는 세션만 가져오므로 중복되지 않습니다.
+- **GitHub·Jira·Notion·Obsidian·칸반·이름 바꾸기**: 허브의 설정과 `~/.thync`를 씁니다. 서버의 thync 가 이 출처를 켜 두어도 허브는 세션만 가져오므로 중복되지 않습니다. 다른 서버에 있는 vault의 노트는 허브에 보이지 않습니다.
 - **허브 자신의 세션**: 허브 머신의 Claude Code 세션도 `sources`에 `claude_code`가 있으면 함께 보입니다.
 
 ## Jira와 Notion 연결
@@ -128,7 +128,7 @@ cat > "${THYNC_HOME:-$HOME/.thync}/notion_token"
 
 ### Obsidian
 
-토큰은 필요 없습니다. `config.json`의 `obsidian_vaults`에 vault 폴더를 적고 서버를 다시 시작합니다. thync는 그 폴더의 `.md` 파일을 직접 읽으며, Obsidian 앱이 켜져 있지 않아도 됩니다.
+토큰은 필요 없습니다. `config.json`의 `obsidian_vaults`에 vault 폴더를 적고 서버를 다시 시작합니다. `sources`를 직접 적어 둔 설정이라면 거기에 `"obsidian"`도 있어야 합니다. 둘 중 하나라도 빠지면 노트를 읽지 않습니다. thync는 그 폴더의 `.md` 파일을 직접 읽으며, Obsidian 앱이 켜져 있지 않아도 됩니다.
 
 ```json
 {
@@ -139,6 +139,7 @@ cat > "${THYNC_HOME:-$HOME/.thync}/notion_token"
 }
 ```
 
+- `path`는 절대 경로나 `~`로 시작하는 경로로 적습니다. 상대 경로로 적은 vault는 건너뛰고 서버 로그에 경고를 남깁니다.
 - 폴더 이름이 같은 vault 두 개를 함께 쓰려면 `name`을 다르게 적습니다. 이름이 겹치면 뒤에 적은 vault를 건너뛰고 서버 로그에 경고를 남깁니다.
 - 최근에 고친 노트가 "Obsidian 노트" 노드로 보입니다. 노트의 제목은 확장자를 뺀 파일 이름입니다.
 - 제목에 Jira 키(예: `ABC-123`)가 있으면 노트가 그 티켓의 작업 단위에 포함됩니다.

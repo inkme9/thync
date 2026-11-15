@@ -342,12 +342,15 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
         for k in tkeys + bkeys:
             if f"jira:{k}" not in nodes:
                 ticket(k, PROFILE_WORK, unit=ukey)
+            elif k in tkeys:
+                # A ticket a review request's title made has no unit yet; it belongs to the unit its key names.
+                nodes[f"jira:{k}"]["detail"].setdefault("unit", ukey)
             edge(nid, f"jira:{k}")
         for url, repo, num in n["prs"]:
             if f"pr:{url}" not in nodes:
                 node(f"pr:{url}", f"{repo} #{num}", "source", profile, kind_label="PR", url=url, repo=repo, unit=ukey)
             edge(nid, f"pr:{url}")
-        by_name.setdefault((n["vault"], title.lower()), []).append(nid)
+        by_name.setdefault((n["vault"], obsidian.fold(title)), []).append(nid)
         for t in n["tags"]:
             by_tag.setdefault((n["vault"], t), []).append((nid, ukey, profile))
         feed(n["at"], "obsidian", title, nid, title, profile)

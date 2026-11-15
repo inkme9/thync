@@ -208,6 +208,8 @@ Obsidian 노트 본문의 Jira 키는 작업 단위를 정하지 않고 티켓�
 
 `thync/sources/`에 모듈을 하나 더하고, `graph.build_graph()`에서 그 결과를 `node()`와 `edge()`로 넣습니다. 노드에 `detail.unit`을 주면 그 작업 단위에 모이고, `roles`를 주면 색과 패널 목록이 반영됩니다. 화면은 고치지 않아도 됩니다.
 
+화면 코드에서 DOM 없이 판정할 수 있는 부분(`web/src/link.ts`)은 `web/test/`의 테스트로 확인합니다. `npm test`가 Node의 내장 테스트 실행기로 돌립니다.
+
 ## brain-atlas
 
 `vendor/brain-atlas/`는 [colorpulse6/brain-atlas](https://github.com/colorpulse6/brain-atlas)의 Canvas2D 렌더러를 가져온 것입니다. 수정 지점은 `thync:` 주석으로 표시했습니다. 기준 커밋, 가져오지 않은 파일, 수정 내역과 라이선스는 [외부 코드 안내](../vendor/brain-atlas/README.md)에 있습니다.

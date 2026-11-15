@@ -42,6 +42,7 @@
 python3 -m unittest discover tests
 npm ci
 npm run typecheck
+npm test
 npm run build
 ```
 

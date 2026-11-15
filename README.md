@@ -96,6 +96,7 @@ GitHub·Jira·Notion 활동은 각 서비스에서 조회하고, Obsidian 노트
 ```bash
 python3 -m unittest discover tests
 npm run typecheck
+npm test
 npm run build
 ```
 

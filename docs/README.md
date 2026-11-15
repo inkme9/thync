@@ -33,7 +33,7 @@
 | --- | --- |
 | [기존 설정 안내](setup.md) | 이전 `setup.md` 주소와 제목 링크에서 주제별 안내로 연결합니다 |
 | [예시 화면](images/thync.png) | 가상 데이터로 실행한 뇌 그래프·칸반·PR 위임 화면입니다 |
-| [config.example.json](../config.example.json) | 복사해서 사용하는 설정 예제입니다. 기본 설정과 달리 세션 로그와 Obsidian을 제외합니다 |
+| [config.example.json](../config.example.json) | 복사해서 사용하는 설정 예제입니다. 기본 설정과 달리 세션 로그를 제외합니다 |
 | [thync/config.py](../thync/config.py) | 설정 기본값, 시간 창, 모델 상수의 기준입니다 |
 | [LICENSE](../LICENSE) | thync의 MIT 라이선스입니다 |
 | [brain-atlas LICENSE](../vendor/brain-atlas/LICENSE) | 외부 코드의 MIT 라이선스 원문입니다 |

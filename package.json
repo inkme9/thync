@@ -7,7 +7,8 @@
   "scripts": {
     "build": "esbuild web/src/main.ts --bundle --format=iife --target=es2020 --outfile=web/app.js",
     "watch": "esbuild web/src/main.ts --bundle --format=iife --target=es2020 --outfile=web/app.js --watch",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --experimental-strip-types --test web/test/*.test.ts"
   },
   "devDependencies": {
     "esbuild": "0.21.5",
