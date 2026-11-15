@@ -8,7 +8,7 @@
 
 1. [설치와 실행](getting-started.md)에서 준비물, 서버 실행, 토큰으로 첫 접속하는 방법을 확인합니다.
 2. [화면, 칸반과 MCP 사용법](usage.md)에서 작업 상태를 읽고 카드를 관리하는 방법을 확인합니다. AI 에이전트 연결도 이 문서에서 안내합니다.
-3. [설정과 외부 서비스 연결](configuration.md)에서 수집할 출처를 고르고 Jira·Notion을 연결합니다.
+3. [설정과 외부 서비스 연결](configuration.md)에서 수집할 출처를 고르고 Jira·Notion·Obsidian을 연결합니다.
 
 ## 작업을 맡기거나 데이터 범위를 확인하는 경우
 
@@ -33,7 +33,7 @@
 | --- | --- |
 | [기존 설정 안내](setup.md) | 이전 `setup.md` 주소와 제목 링크에서 주제별 안내로 연결합니다 |
 | [예시 화면](images/thync.png) | 가상 데이터로 실행한 뇌 그래프·칸반·PR 위임 화면입니다 |
-| [config.example.json](../config.example.json) | 복사해서 사용하는 설정 예제입니다. 기본 설정과 달리 세션 로그를 제외합니다 |
+| [config.example.json](../config.example.json) | 복사해서 사용하는 설정 예제입니다. 기본 설정과 달리 세션 로그와 Obsidian을 제외합니다 |
 | [thync/config.py](../thync/config.py) | 설정 기본값, 시간 창, 모델 상수의 기준입니다 |
 | [LICENSE](../LICENSE) | thync의 MIT 라이선스입니다 |
 | [brain-atlas LICENSE](../vendor/brain-atlas/LICENSE) | 외부 코드의 MIT 라이선스 원문입니다 |

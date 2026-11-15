@@ -6,6 +6,7 @@ repository in THYNC_HOME (default ~/.thync). See config.example.json.
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 
 HOME = Path.home()
@@ -33,8 +34,8 @@ CARDS_DIR = Path(CONFIG.get("cards_dir", STATE_DIR / "cards")).expanduser()
 # Claude Code skills started when a PR is handed off: my PR -> "sent", someone else's PR -> "review".
 REFLEX_SKILL = {"sent": "pr-review-watch", **CONFIG.get("reflex_skills", {})}
 # Where work comes from: "claude_code" and "codex" (session logs), "github" (reviews, my PRs, my commits), "jira",
-# "notion".
-SOURCES = set(CONFIG.get("sources", ["claude_code", "codex", "github", "jira", "notion"]))
+# "notion", "obsidian" (notes edited in the vaults of `obsidian_vaults`).
+SOURCES = set(CONFIG.get("sources", ["claude_code", "codex", "github", "jira", "notion", "obsidian"]))
 # Other machines whose sessions this thync shows too. Each runs its own thync and is reached over SSH:
 # [{"name": "devbox1", "ssh": "devbox1"}] (docs/configuration.md, "여러 서버를 한 화면에서").
 REMOTES = [{"name": str(r["name"]), "ssh": str(r["ssh"]), "port": int(r.get("port", 8765)),
@@ -54,6 +55,28 @@ HOST = "127.0.0.1"
 PORT = int(CONFIG.get("port", 8765))
 
 PROFILE_WORK, PROFILE_PERSONAL = "회사", "개인"
+
+
+def parse_vaults(raw) -> list[dict]:
+    """`obsidian_vaults` -> [{name, path, profile}]. `name` tells vaults apart inside thync and defaults to the
+    folder name; an entry whose name is already taken is skipped, since its notes would share node ids."""
+    vaults, names = [], set()
+    for v in raw if isinstance(raw, list) else []:
+        if not isinstance(v, dict) or not v.get("path"):
+            continue
+        path = str(Path(str(v["path"])).expanduser())
+        name = str(v.get("name") or Path(path).name)
+        if name in names:
+            print(f"thync: Obsidian vault {path} skipped: the name '{name}' is taken; set a different \"name\"",
+                  file=sys.stderr, flush=True)
+            continue
+        names.add(name)
+        vaults.append({"name": name, "path": path, "profile": PROFILE_WORK if v.get("profile") == PROFILE_WORK else PROFILE_PERSONAL})
+    return vaults
+
+
+# Obsidian vaults whose recently edited notes join the graph: [{"path": "~/vault", "profile": "회사", "name": "work"}].
+OBSIDIAN_VAULTS = parse_vaults(CONFIG.get("obsidian_vaults", []))
 
 # --- Time windows (seconds) ---
 # Commits, ticket changes and page edits come hours apart, not minutes like prompts, so without session

@@ -26,7 +26,7 @@ from .config import (DEFAULT_DAYS, HANDOFF, HOST, MAX_DAYS, PORT, PROFILE_PERSON
 from .export import snapshot
 from .graph import build_graph
 from .reflex import start_reflex
-from .sources import github, jira, notion, remote
+from .sources import github, jira, notion, obsidian, remote
 from .sources.claude_code import load_sessions, questions_of
 from .store import BOARD_COLUMNS, load_token, save_card, save_name
 
@@ -330,6 +330,8 @@ def main() -> None:
         threading.Thread(target=github.refresh_forever, daemon=True).start()
     if "notion" in SOURCES:
         threading.Thread(target=notion.refresh_forever, daemon=True).start()
+    if "obsidian" in SOURCES:
+        obsidian.start()
     threading.Thread(target=jira.refresh_forever, daemon=True).start()  # summaries of keys seen anywhere
     if SESSIONS:
         load_sessions(time.time(), MAX_DAYS * 86400)  # read logs up front so the first page load does not wait

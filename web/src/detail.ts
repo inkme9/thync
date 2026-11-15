@@ -97,7 +97,7 @@ function showDetail(id: string): void {
     const row = document.createElement("div");
     const vv = document.createElement(k === "링크" ? "a" : "span");
     vv.textContent = v;
-    if (vv instanceof HTMLAnchorElement && /^https?:\/\//.test(v)) {
+    if (vv instanceof HTMLAnchorElement && /^(https?|obsidian):\/\//.test(v)) { // obsidian:// opens a note in Obsidian
       vv.href = v; // kept so middle-click and "copy link" still work
       vv.onclick = (e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); openOnce(v); } };
     }

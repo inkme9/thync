@@ -9,6 +9,7 @@
 - [GitHub CLI](https://cli.github.com/) (`gh auth login` 된 상태) — 내 커밋, 리뷰 요청, 내 PR
 - 선택: Jira Cloud API 토큰 — 나에게 배정된 티켓 ([연결 설정](configuration.md#jira와-notion-연결))
 - 선택: Notion integration 토큰 — 최근에 고친 Notion 페이지
+- 선택: Obsidian vault 폴더 — 최근에 고친 노트 ([연결 설정](configuration.md#obsidian))
 - 선택: [Claude Code](https://docs.claude.com/en/docs/claude-code) 세션 로그 (`~/.claude/projects/`) — 세션 단위의 집중과 백그라운드
 - 선택: `claude` CLI — PR을 Claude에게 맡기는 기능. 세션 로그도 읽을 때만 활성화됩니다. 내 PR을 맡길 때는 `tmux`도 필요합니다
 
