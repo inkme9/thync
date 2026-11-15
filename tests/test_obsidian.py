@@ -38,6 +38,12 @@ class Vaults(unittest.TestCase):
         self.assertEqual([v["path"] for v in same], ["/a/vault"])
         self.assertEqual([v["name"] for v in apart], ["vault", "b"])
 
+    def test_a_path_or_name_that_cannot_be_used_is_skipped(self):
+        with mock.patch("sys.stderr"):
+            got = config.parse_vaults([{"path": "~no-such-user-here/v"}, {"path": "/"}, {"path": "/v/a", "name": "a:b"},
+                                       {"path": "/v/ok"}])
+        self.assertEqual(got, [{"name": "ok", "path": "/v/ok", "profile": "개인"}])
+
     def test_a_relative_path_is_skipped_and_a_home_path_is_made_absolute(self):
         with mock.patch("sys.stderr"):
             got = config.parse_vaults([{"path": "notes/vault"}, {"path": "~/vault"}])
@@ -66,6 +72,22 @@ class Extract(unittest.TestCase):
     def test_front_matter_tags_as_a_block_list_or_a_plain_line(self):
         self.assertEqual(obsidian.extract("---\ntitle: t\ntags:\n  - one\n  - '#two'\nother: x\n---\n")["tags"], ["one", "two"])
         self.assertEqual(obsidian.extract("---\ntags: a, b\n---\n")["tags"], ["a", "b"])
+
+    def test_front_matter_with_windows_line_endings(self):
+        self.assertEqual(obsidian.extract("---\r\ntags: [crlf]\r\n---\r\n#body\r\n")["tags"], ["crlf", "body"])
+
+    def test_a_tag_needs_a_letter(self):
+        self.assertEqual(obsidian.extract("#- #_ #/ #2026-11 #a-1 #v2")["tags"], ["a-1", "v2"])
+
+    def test_a_pull_request_url_must_stand_alone(self):
+        text = "xhttps://github.com/o/r/pull/3 https://github.com/o/r/pull/12abc (https://github.com/o/r/pull/5)"
+        self.assertEqual([n for _, _, n in obsidian.extract(text)["prs"]], [5])
+
+    def test_many_unclosed_links_on_one_line_stay_fast(self):
+        for text in ("[[a " * 60000, "[[a|" * 60000, "[[a#" * 60000):  # 240KB, about one full read
+            start = time.time()
+            self.assertEqual(obsidian.extract(text)["links"], [])
+            self.assertLess(time.time() - start, 2.0)  # the quadratic pattern needed minutes
 
     def test_tag_at_the_start_of_a_line_counts(self):
         self.assertEqual(obsidian.extract("#첫줄\n본문")["tags"], ["첫줄"])
@@ -122,6 +144,20 @@ class Scan(unittest.TestCase):
         os.symlink(outside, self.vault / "link.md")
         os.symlink(outside.parent, self.vault / "linked-folder")
         self.assertEqual(self.rels(obsidian.scan(time.time())), ["keep.md"])
+
+    def test_a_file_swapped_for_a_link_after_the_listing_is_not_opened(self):
+        outside = write(self.root / "outside" / "secret.md", "ABC-1 #secret")
+        target = write(self.vault / "note.md", "#mine")
+        real = obsidian._recent_files
+
+        def swap(*args):  # the listing saw a regular file; before it is read it becomes a link out of the vault
+            found = real(*args)
+            target.unlink()
+            os.symlink(outside, target)
+            return found
+
+        with mock.patch.object(obsidian, "_recent_files", swap):
+            self.assertEqual(obsidian.scan(time.time()), [])
 
     def test_only_the_newest_hundred_notes_across_all_vaults(self):
         second = self.root / "second"
@@ -273,7 +309,9 @@ class Graph(unittest.TestCase):
         self.assertEqual(self.nodes[note]["detail"]["unit"], note)                # the body does not decide the unit
         self.assertTrue(self.linked(note, "jira:ABC-5") and self.linked(note, "jira:ABC-77"))
         self.assertEqual(self.nodes["jira:ABC-5"]["detail"]["unit"], "jira:ABC-5")  # an existing ticket keeps its unit
-        self.assertEqual(self.nodes["jira:ABC-77"]["detail"]["unit"], "common")     # a ticket the note made joins no unit
+        # A ticket the note made sits in the note's unit: a node in "common" is never drawn (web/src/state.ts).
+        self.assertEqual(self.nodes["jira:ABC-77"]["detail"]["unit"], note)
+        self.assertTrue(self.nodes["jira:ABC-77"]["detail"]["mention"])
         self.assertEqual(self.nodes["jira:ABC-77"]["profile"], "회사")
         self.assertNotIn("jira:ABC-77", self.units)                                 # so a colleague's ticket is no card of mine
 
@@ -286,6 +324,7 @@ class Graph(unittest.TestCase):
         g = self.build()
         after = next(c for c in g["board"] if c["id"] == "obsidian:vault:회의록.md")
         self.assertTrue(self.linked("obsidian:vault:회의록.md", "jira:ABC-77"))
+        self.assertEqual(self.nodes["jira:ABC-77"]["detail"]["unit"], "obsidian:vault:회의록.md")  # drawn with the note
         self.assertEqual((before["column"], before["tags"]), (after["column"], after["tags"]))
 
     def test_at_most_ten_body_keys_per_note(self):

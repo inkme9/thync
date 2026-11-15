@@ -27,9 +27,9 @@ FRONT = re.compile(r"\A---[ \t]*\n(.*?)^---[ \t]*$", re.S | re.M)
 FRONT_TAGS = re.compile(r"^tags?:[ \t]*(.*)\n((?:[ \t]*-[ \t]*.*\n?)*)", re.M)
 # [[name]], [[name|alias]], [[name#heading]], [[name^block]]; in a table the alias bar is escaped: [[name\|alias]].
 # The closing ]] is required, so a link the 256KB cut left open is not read as a link to a shorter name.
-LINK = re.compile(r"\[\[([^\]|#^\n\\]+)(?:[|#^\\][^\]\n]*)?\]\]")
+LINK = re.compile(r"\[\[([^\[\]|#^\n\\]+)(?:[|#^\\][^\[\]\n]*)?\]\]")  # no [ inside: a run of [[ stays linear
 TAG = re.compile(r"(?:^|(?<=\s))#([\w/-]+)", re.M)  # at the start of a line or after whitespace: not a url fragment
-PULL = re.compile(r"https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)")
+PULL = re.compile(r"(?<![\w.-])https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?!\w)")
 
 _notes: tuple[float, list] = (0.0, [])
 _threaded = False  # a refresh thread owns the scanning; callers then only read its last result
@@ -48,12 +48,13 @@ def fold(name: str) -> str:
 
 def _tag(raw: str) -> str:
     t = fold(raw.strip().strip("'\"").lstrip("#"))
-    return t if re.fullmatch(r"[\w/-]+", t) and not t.isdigit() else ""
+    return t if re.fullmatch(r"[\w/-]+", t) and any(c.isalpha() for c in t) else ""
 
 
 def extract(text: str) -> dict:
     """What a note's text adds to the graph: {links, tags, keys, prs}. Code is skipped."""
     tags = []
+    text = text.replace("\r\n", "\n")
     front = FRONT.match(text)
     if front:
         m = FRONT_TAGS.search(front.group(1) + "\n")
@@ -98,7 +99,8 @@ def scan(now: float) -> list[dict]:
     notes = []
     for at, vault, path in sorted(files, key=lambda f: f[0], reverse=True)[:MAX_NOTES]:
         try:
-            with open(path, "rb") as f:
+            # O_NOFOLLOW: a file swapped for a symlink since the listing must not lead out of the vault.
+            with os.fdopen(os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)), "rb") as f:
                 data = f.read(READ_BYTES + 1)
         except OSError:
             continue

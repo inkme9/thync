@@ -64,12 +64,19 @@ def parse_vaults(raw) -> list[dict]:
     for v in raw if isinstance(raw, list) else []:
         if not isinstance(v, dict) or not v.get("path"):
             continue
-        path = str(Path(str(v["path"])).expanduser())
+        try:
+            path = str(Path(str(v["path"])).expanduser())
+        except RuntimeError:  # ~someone with no such user
+            path = str(v["path"])
         if not os.path.isabs(path):  # it would depend on where thync was started, and so would the note links
             print(f"thync: Obsidian vault {path} skipped: write an absolute path or one that starts with ~",
                   file=sys.stderr, flush=True)
             continue
         name = str(v.get("name") or Path(path).name)
+        if not name or ":" in name:  # the name is a field of the node id obsidian:<name>:<path>
+            print(f"thync: Obsidian vault {path} skipped: set a \"name\" that is not empty and has no ':'",
+                  file=sys.stderr, flush=True)
+            continue
         if name in names:
             print(f"thync: Obsidian vault {path} skipped: the name '{name}' is taken; set a different \"name\"",
                   file=sys.stderr, flush=True)

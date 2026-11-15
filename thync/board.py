@@ -13,11 +13,16 @@ REVIEW_STATUS = {"running": "리뷰 중", "posted": "리뷰 올림", "approved":
                  "same": "이미 이 커밋을 리뷰함"}
 
 
+def _own_ticket(n: dict) -> bool:
+    """A ticket that is this unit's work. One an Obsidian note only mentions is drawn in the unit but is not."""
+    return n["kind"] == "project" and not n["detail"].get("mention")
+
+
 def _auto_column(members: list[dict]) -> str:
     if any(n["detail"].get("waiting") for n in members):
         return "waiting"
     sources = [n for n in members if "last_at" in n["detail"]]
-    statuses = {n["detail"].get("jira_status", "").lower() for n in members if n["kind"] == "project"} - {""}
+    statuses = {n["detail"].get("jira_status", "").lower() for n in members if _own_ticket(n)} - {""}
     if any("focus" in n["roles"] or "running" in n["roles"] or n["detail"]["live"] for n in sources):
         return "doing"
     if any("review" in n["roles"] or "sent" in n["roles"] for n in members):
@@ -48,7 +53,7 @@ def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list
                               "tags": [n["name"], "리뷰 요청" if review else n["detail"].get("review_state", "")]})
             continue
         sessions = [n for n in members if n["kind"] == "workThread"]
-        tickets = [n for n in members if n["kind"] == "project"]
+        tickets = [n for n in members if _own_ticket(n)]
         lead = max((n for n in members if "last_at" in n["detail"]), key=lambda n: n["detail"]["last_at"], default=None)
         tags = [t["detail"].get("key", "") for t in tickets][:3]
         tags += [f"세션 {len(sessions)}"] if sessions else []
