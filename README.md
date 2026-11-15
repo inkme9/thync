@@ -100,6 +100,8 @@ npm test
 npm run build
 ```
 
+`npm test`는 화면 코드 테스트이고 Node.js 22.6 이상이 필요합니다(TypeScript 파일을 Node가 직접 실행합니다). 빌드만 하려면 Node.js 18 이상이면 됩니다.
+
 화면 코드를 수정할 때는 `npm run watch`로 저장할 때마다 다시 빌드합니다. 변경 사항은 브라우저를 새로고침해 확인합니다. 코드 구조와 확장 방법은 [아키텍처](docs/architecture.md)에 설명합니다.
 
 ## 출처와 라이선스

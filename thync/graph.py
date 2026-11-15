@@ -341,7 +341,9 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
         touch(node(nid, title, "dailyNote", profile, kind_label="Obsidian 노트", text=title, url=n["url"]), n["at"], ukey)
         for k in tkeys + bkeys:
             if f"jira:{k}" not in nodes:
-                ticket(k, PROFILE_WORK, unit=ukey)
+                # A ticket only the body names stays out of the note's unit (it lands in "common"): as a member
+                # its Jira status would set the column and tags of the note's card (board.py).
+                ticket(k, PROFILE_WORK, **({"unit": ukey} if k in tkeys else {}))
             elif k in tkeys:
                 # A ticket a review request's title made has no unit yet; it belongs to the unit its key names.
                 nodes[f"jira:{k}"]["detail"].setdefault("unit", ukey)

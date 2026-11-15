@@ -148,6 +148,13 @@ class Scan(unittest.TestCase):
         self.assertEqual((notes["cut.md"]["tags"], notes["cut.md"]["keys"]), (["앞"], []))
         self.assertEqual(notes["fits.md"]["keys"], ["ABC-123"])
 
+    def test_a_link_the_cut_leaves_open_is_not_a_link_to_a_shorter_name(self):
+        fill = "x" * (obsidian.READ_BYTES - len("[[회의 ".encode()) - 1)
+        write(self.vault / "cut.md", f"{fill} [[회의 메모]] 뒤")               # the cut falls after "[[회의 "
+        (note,) = obsidian.scan(time.time())
+        self.assertEqual(note["links"], [])
+        self.assertEqual(obsidian.extract("[[열린 링크\n[[닫힌 링크]]")["links"], ["닫힌 링크"])
+
     def test_a_file_dated_in_the_future_counts_as_edited_now(self):
         write(self.vault / "future.md", age=-3600)
         now = time.time()
@@ -266,9 +273,20 @@ class Graph(unittest.TestCase):
         self.assertEqual(self.nodes[note]["detail"]["unit"], note)                # the body does not decide the unit
         self.assertTrue(self.linked(note, "jira:ABC-5") and self.linked(note, "jira:ABC-77"))
         self.assertEqual(self.nodes["jira:ABC-5"]["detail"]["unit"], "jira:ABC-5")  # an existing ticket keeps its unit
-        self.assertEqual(self.nodes["jira:ABC-77"]["detail"]["unit"], note)         # a ticket the note made joins the note
+        self.assertEqual(self.nodes["jira:ABC-77"]["detail"]["unit"], "common")     # a ticket the note made joins no unit
         self.assertEqual(self.nodes["jira:ABC-77"]["profile"], "회사")
         self.assertNotIn("jira:ABC-77", self.units)                                 # so a colleague's ticket is no card of mine
+
+    def test_a_colleagues_ticket_in_the_body_does_not_move_the_notes_card(self):
+        write(self.vault / "회의록.md", age=2 * DAY)
+        g = self.build()
+        before = next(c for c in g["board"] if c["id"] == "obsidian:vault:회의록.md")
+        self.tickets["ABC-77"] = {"summary": "동료 작업", "status": "진행 중", "updated": self.iso(600), "mine": False}
+        write(self.vault / "회의록.md", "ABC-77 은 동료 티켓", age=2 * DAY)
+        g = self.build()
+        after = next(c for c in g["board"] if c["id"] == "obsidian:vault:회의록.md")
+        self.assertTrue(self.linked("obsidian:vault:회의록.md", "jira:ABC-77"))
+        self.assertEqual((before["column"], before["tags"]), (after["column"], after["tags"]))
 
     def test_at_most_ten_body_keys_per_note(self):
         write(self.vault / "목록.md", " ".join(f"ABC-{i}" for i in range(100, 115)))

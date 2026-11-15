@@ -25,7 +25,9 @@ FENCE = re.compile(r"^[ \t]*(```|~~~).*?(?:^[ \t]*\1[^\n]*$|\Z)", re.S | re.M)  
 INLINE_CODE = re.compile(r"`[^`\n]*`")
 FRONT = re.compile(r"\A---[ \t]*\n(.*?)^---[ \t]*$", re.S | re.M)
 FRONT_TAGS = re.compile(r"^tags?:[ \t]*(.*)\n((?:[ \t]*-[ \t]*.*\n?)*)", re.M)
-LINK = re.compile(r"\[\[([^\]|#^\n\\]+)")  # up to an alias, heading or block; in a table the alias bar is escaped: \|
+# [[name]], [[name|alias]], [[name#heading]], [[name^block]]; in a table the alias bar is escaped: [[name\|alias]].
+# The closing ]] is required, so a link the 256KB cut left open is not read as a link to a shorter name.
+LINK = re.compile(r"\[\[([^\]|#^\n\\]+)(?:[|#^\\][^\]\n]*)?\]\]")
 TAG = re.compile(r"(?:^|(?<=\s))#([\w/-]+)", re.M)  # at the start of a line or after whitespace: not a url fragment
 PULL = re.compile(r"https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)")
 
