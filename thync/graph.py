@@ -345,8 +345,11 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
                 # status does not set the column and tags of the note's card (board.py).
                 ticket(k, PROFILE_WORK, unit=ukey, **({} if k in tkeys else {"mention": True}))
             elif k in tkeys:
-                # A ticket a review request's title made has no unit yet; it belongs to the unit its key names.
-                nodes[f"jira:{k}"]["detail"].setdefault("unit", ukey)
+                # A ticket a review request's title made has no unit yet, and one an earlier note only mentioned
+                # sits in that note's unit: either way it belongs to the unit its key names.
+                d = nodes[f"jira:{k}"]["detail"]
+                if d.pop("mention", False) or "unit" not in d:
+                    d["unit"] = ukey
             edge(nid, f"jira:{k}")
         for url, repo, num in n["prs"]:
             if f"pr:{url}" not in nodes:

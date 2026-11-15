@@ -83,6 +83,11 @@ class Extract(unittest.TestCase):
         text = "xhttps://github.com/o/r/pull/3 https://github.com/o/r/pull/12abc (https://github.com/o/r/pull/5)"
         self.assertEqual([n for _, _, n in obsidian.extract(text)["prs"]], [5])
 
+    def test_a_pull_request_url_next_to_korean_or_markup_is_read(self):
+        for text in ("https://github.com/o/r/pull/5와 비교", "참고https://github.com/o/r/pull/5", "_https://github.com/o/r/pull/5_",
+                     "[글](https://github.com/o/r/pull/5)", "https://github.com/o/r/pull/5/files"):
+            self.assertEqual([n for _, _, n in obsidian.extract(text)["prs"]], [5], text)
+
     def test_many_unclosed_links_on_one_line_stay_fast(self):
         for text in ("[[a " * 60000, "[[a|" * 60000, "[[a#" * 60000):  # 240KB, about one full read
             start = time.time()
@@ -314,6 +319,19 @@ class Graph(unittest.TestCase):
         self.assertTrue(self.nodes["jira:ABC-77"]["detail"]["mention"])
         self.assertEqual(self.nodes["jira:ABC-77"]["profile"], "회사")
         self.assertNotIn("jira:ABC-77", self.units)                                 # so a colleague's ticket is no card of mine
+
+    def test_a_title_key_claims_a_ticket_another_note_only_mentioned(self):
+        for mentioning in ("A.md", "Z.md"):  # processed before and after the note that carries the key in its title
+            with self.subTest(mentioning=mentioning):
+                for old in self.vault.glob("*.md"):
+                    old.unlink()
+                write(self.vault / mentioning, "ABC-77 언급")
+                write(self.vault / "ABC-77 계획.md")
+                g = self.build()
+                ticket = self.nodes["jira:ABC-77"]["detail"]
+                self.assertEqual((ticket["unit"], ticket.get("mention")), ("jira:ABC-77", None))
+                self.assertEqual(next(c for c in g["board"] if c["id"] == "jira:ABC-77")["tags"], ["ABC-77"])
+                self.assertTrue(self.linked(f"obsidian:vault:{mentioning}", "jira:ABC-77"))
 
     def test_a_colleagues_ticket_in_the_body_does_not_move_the_notes_card(self):
         write(self.vault / "회의록.md", age=2 * DAY)

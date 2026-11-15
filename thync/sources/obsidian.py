@@ -27,9 +27,10 @@ FRONT = re.compile(r"\A---[ \t]*\n(.*?)^---[ \t]*$", re.S | re.M)
 FRONT_TAGS = re.compile(r"^tags?:[ \t]*(.*)\n((?:[ \t]*-[ \t]*.*\n?)*)", re.M)
 # [[name]], [[name|alias]], [[name#heading]], [[name^block]]; in a table the alias bar is escaped: [[name\|alias]].
 # The closing ]] is required, so a link the 256KB cut left open is not read as a link to a shorter name.
-LINK = re.compile(r"\[\[([^\[\]|#^\n\\]+)(?:[|#^\\][^\[\]\n]*)?\]\]")  # no [ inside: a run of [[ stays linear
+LINK = re.compile(r"\[\[([^\[\]|#^\n\\]+)(?:[|#^\\][^\[\]\n]*)?\]\]")  # no [ inside (so [[note|see [1]]] is not read): a run of [[ stays linear
 TAG = re.compile(r"(?:^|(?<=\s))#([\w/-]+)", re.M)  # at the start of a line or after whitespace: not a url fragment
-PULL = re.compile(r"(?<![\w.-])https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?!\w)")
+# ASCII letters and digits only at the edges: a Korean particle or markup may touch the url (…/pull/5와, _…/pull/5_).
+PULL = re.compile(r"(?<![A-Za-z0-9])https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?![A-Za-z0-9])")
 
 _notes: tuple[float, list] = (0.0, [])
 _threaded = False  # a refresh thread owns the scanning; callers then only read its last result
