@@ -5,12 +5,10 @@ handed off to Claude), done. A column set by hand in the
 card's Markdown file wins over the automatic one, which stays in `auto_column` so it can be restored.
 """
 from .config import HANDOFF, JIRA_DONE, JIRA_TODO, PROFILE_PERSONAL, PROFILE_WORK
-from .reflex import tmux_alive
+from .reflex import run_state
 from .sources import remote
 from .store import BOARD_COLUMNS, load_reflexes
 
-REVIEW_STATUS = {"running": "리뷰 중", "posted": "리뷰 올림", "approved": "리뷰 올리고 승인함", "failed": "실패",
-                 "same": "이미 이 커밋을 리뷰함"}
 
 
 def _auto_column(members: list[dict]) -> str:
@@ -27,6 +25,20 @@ def _auto_column(members: list[dict]) -> str:
     if statuses and statuses <= JIRA_TODO:
         return "todo"
     return "done"
+
+
+def run_label(run: dict, session: dict | None) -> str:
+    """What a handed-off session is doing, as far as tmux, its exit code and its session log tell."""
+    if run.get("alive"):
+        if session is None:
+            return "시작함"
+        if session.get("waiting"):
+            return "답을 기다림"
+        if session.get("claude_working"):
+            return "작업 중"
+        return "대기 중 · 백그라운드 감시 중이거나 입력을 기다림"
+    code = run.get("exit")
+    return "끝남 (종료 코드 모름)" if code is None else "끝남" if code == 0 else f"실패 (종료 코드 {code})"
 
 
 def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list[dict]:
@@ -72,18 +84,16 @@ def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list
 
     # Work handed off to Claude: one card per PR.
     handed = {n["detail"]["reflex"]: n for n in nodes.values() if n["kind"] == "workThread" and n["detail"].get("reflex")}
-    # Hand-offs a remote runs come with its tmux state; there `tmux attach` needs an ssh first.
+    # Hand-offs a remote runs come with their run state; there `tmux attach` needs an ssh first.
     for url, r in {**(load_reflexes() if HANDOFF else {}), **remote.reflexes()}.items():
+        if "tmux" not in r:
+            continue  # a record of the one-shot reviewer thync no longer has
         pr = nodes.get(f"pr:{url}")
         session = handed.get(url)
-        if "tmux" in r:
-            alive = r["alive"] if "host" in r else tmux_alive(r["tmux"])
-            attach = f"tmux attach -t {r['tmux']}"
-            tags = [r["skill"], "돌고 있음" if alive else "끝남",
-                    (f"ssh -t {r['ssh']} {attach}" if "host" in r else attach) if alive else ""]
-        else:  # a review thync runs itself
-            tags = [r.get("skill", ""), "지적 없으면 approve" if r.get("approve") else "",
-                    REVIEW_STATUS.get(r.get("status"), ""), r.get("error", "")]
+        attach = f"tmux attach -t {r['tmux']}"
+        run = r if "host" in r else run_state(r)
+        tags = [r["skill"], run_label(run, session["detail"] if session else None),
+                (f"ssh -t {r['ssh']} {attach}" if "host" in r else attach) if run.get("alive") else ""]
         cards.append({"id": f"reflex:{url}", "title": pr["detail"].get("text", pr["name"]) if pr else url,
                       "sub": pr["name"] if pr else "", "column": "reflex", "auto_column": "reflex", "moved": False,
                       "note": "", "profile": pr["profile"] if pr else PROFILE_WORK, "updated": r["started"],

@@ -115,6 +115,12 @@
       background: rgba(255, 207, 107, .08); }
     button.info:focus-visible { outline: 1px solid var(--glow); outline-offset: 2px; }
     .card { position: relative; padding-right: 64px; }
+    button.info.hand { right: 78px; }
+    li:has(button.hand) { padding-right: 150px; }
+    li[draggable="true"] { cursor: grab; }
+    #detail dl.plan { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 12px; font-size: 13px; }
+    #detail dl.plan dt { color: var(--quiet); }
+    #detail dl.plan dd { margin: 0; overflow-wrap: anywhere; }
     li.empty { color: var(--quiet); font-size: 12px; cursor: default; }
     .toggle { display: block; font-size: 12px; color: var(--quiet); margin: -6px 0 12px; cursor: pointer; }
     .legend { font-size: 11px; color: var(--quiet); }
@@ -173,7 +179,7 @@
       <div id="hud"><span class="dot"></span><b>THYNC</b><span id="status">불러오는 중</span></div>
       <button id="rotate" type="button"></button>
       <ul id="live"></ul>
-      <div id="help" title="드래그 회전 · 스크롤 확대 · 노드 클릭 선택 · PR 노드를 맨 아래 줄기에 놓으면 리뷰 작업을 맡김 · 카드는 끌어서 옮기고 두 번 눌러 고침">? 조작법</div>
+      <div id="help" title="드래그 회전 · 스크롤 확대 · 노드 클릭 선택 · PR 노드나 리뷰 목록 항목을 맨 아래 줄기에 놓으면 Concord 작업으로 맡김 · 카드는 끌어서 옮기고 두 번 눌러 고침">? 조작법</div>
     </div>
     <div id="splitter" title="끌어서 칸반 높이 바꾸기 · 두 번 누르면 원래대로" aria-label="칸반 높이 조절" role="separator" aria-orientation="horizontal"></div>
     <div id="boardbar"><span class="modes"><button data-mode="both">뇌 + 칸반</button><button data-mode="brain">뇌만</button><button data-mode="board">칸반만</button></span><span id="board-hint">끌어서 옮기기 · 제목이나 메모를 두 번 눌러 바로 고치기 · 카드 하나 = Markdown 파일 하나</span><button id="add-card">+ 카드</button></div>

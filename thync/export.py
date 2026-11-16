@@ -11,7 +11,7 @@ import time
 from . import ask
 from .config import ACTIVITY_SEC, FILES_SEC, FOCUS_SEC, HANDOFF, SESSIONS
 from .graph import profile_of, reflex_of
-from .reflex import tmux_alive
+from .reflex import run_state
 from .sources.claude_code import load_sessions, repo_of
 from .store import load_reflexes
 from .util import epoch
@@ -43,8 +43,8 @@ def snapshot(days: int) -> tuple[bytes, str]:
     sessions = load_sessions(now, days * 86400) if SESSIONS else []
     data = {
         "sessions": [session_dict(s, last, subs, now, reflexes) for s, last, subs in sessions],
-        # Hand-offs this machine runs, so the hub's board can show them; tmux only exists here.
-        "reflexes": {url: {**r, "alive": tmux_alive(r["tmux"])} if "tmux" in r else r for url, r in reflexes.items()},
+        # Hand-offs this machine runs, so the hub's board can show them; tmux and exit codes only exist here.
+        "reflexes": {url: {**r, **run_state(r)} for url, r in reflexes.items() if "tmux" in r},
     }
     body = json.dumps(data, ensure_ascii=False, sort_keys=True).encode()
     return body, '"' + hashlib.sha256(body).hexdigest()[:32] + '"'

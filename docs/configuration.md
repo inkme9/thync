@@ -28,15 +28,14 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 | 키 | 뜻 | 기본값 |
 | --- | --- | --- |
 | `sources` | 읽을 출처. `claude_code`(Claude Code 세션 로그), `codex`(Codex CLI 세션 로그), `github`(내 커밋, 리뷰 요청, 내 PR), `jira`(나에게 배정된 티켓), `notion`(최근에 고친 페이지) | 다섯 가지 모두 |
-| `company_roots` | 이 폴더 아래에서 시작한 세션은 회사 프로필이 됩니다. PR을 맡길 때 로컬 저장소를 찾는 위치이기도 합니다 | `[]` (세션은 모두 개인) |
+| `company_roots` | 이 폴더 아래에서 시작한 세션은 회사 프로필이 됩니다. PR을 맡길 때 로컬 저장소를 찾는 위치이기도 합니다(바로 아래 폴더, 이름순) | `[]` (세션은 모두 개인) |
 | `jira_browse_url` | Jira 티켓 링크 앞부분 (예: `https://example.atlassian.net/browse/`). 티켓 정보를 받아 올 주소도 여기서 정합니다 | 없음 (링크 없음) |
 | `jira_email` | Jira Cloud 계정 이메일. API 토큰과 함께 있으면 티켓 요약·상태·상위 이슈를 자동으로 받아 옵니다 | 없음 (`jira.json`을 손으로 채움) |
 | `cards_dir` | 칸반 카드 파일을 둘 폴더. Obsidian vault 안 폴더를 지정해도 됩니다 | `<THYNC_HOME>/cards` (기본 `~/.thync/cards`) |
 | `port` | 서버 포트 | `8765` |
-| `reflex_skills` | 내 PR을 맡길 때 실행할 Claude Code 스킬 (`sent`) | `pr-review-watch` |
 | `ask_wait_sec` | 질문 hook 이 thync 의 답을 기다리는 시간(초). 지나면 세션이 직접 묻습니다 ([사용법](usage.md#선택-대기-질문에-thync-에서-답하기-pretooluse-hook)) | `300` |
 | `remotes` | 이 화면에 함께 보일 다른 서버 목록. `[{"name": "devbox1", "ssh": "devbox1"}]`. `ssh`는 `ssh` 명령에 주는 호스트, `port`(기본 `8765`)와 `thync_home`(기본 `~/.thync`)은 그 서버의 thync 값입니다 ([여러 서버를 한 화면에서](#여러-서버를-한-화면에서)) | `[]` |
-| `reflex_host` | PR 을 맡길 때 Claude 를 실행할 서버(`remotes`의 `name`). 그 서버의 저장소와 tmux 에서 돕니다 | 없음 (이 머신) |
+| `reflex_host` | PR 을 맡길 때 Claude 를 실행할 서버(`remotes`의 `name`). 그 서버의 저장소, mien 프로필, tmux 에서 돕니다 | 없음 (이 머신) |
 | `notion_user_id` | 이 Notion 사용자가 마지막으로 고친 페이지만 사용합니다 | 없음 (integration이 볼 수 있는 페이지 모두) |
 
 ## 저장 파일
@@ -52,7 +51,8 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 | `notion_token` | Notion integration 토큰 (선택). 환경 변수 `NOTION_TOKEN`으로 줘도 됩니다. `chmod 600`으로 둡니다. 다른 사용자가 읽을 수 있으면 서버 로그에 경고를 남깁니다 |
 | `names.json` | 화면에서 바꾼 노드 이름 |
 | `cards/*.md` | 칸반 카드 ([파일 형식](usage.md#칸반-카드-파일)) |
-| `reflex.json` | Claude에게 맡긴 PR과 진행 상태 (tmux 세션 이름이나 리뷰 결과) |
+| `reflex.json` | Claude에게 맡긴 PR: tmux 세션 이름, 작업, 실행 계정과 프로필, 클론 경로, 시작 시각 |
+| `handoff/` | 맡긴 세션이 끝날 때 쓰는 종료 코드 파일 (`<세션 이름>.exit`) |
 
 ## 여러 서버를 한 화면에서
 
@@ -83,7 +83,7 @@ flowchart LR
 
 - **프로필**: 다른 서버의 세션이 회사인지 개인인지는 그 서버의 `company_roots`로 정합니다. 허브의 `company_roots`는 허브 자신의 세션에만 씁니다.
 - **선택 대기 질문**: 화면에서 고른 답은 그 세션이 있는 서버의 thync 로 넘어갑니다. 그 서버에 질문 hook 이 등록되어 있어야 합니다([사용법](usage.md#선택-대기-질문에-thync-에서-답하기-pretooluse-hook)).
-- **PR 맡기기**: `reflex_host`를 주면 그 서버의 저장소와 tmux 에서 Claude 가 돕니다. 칸반의 맡긴 일 카드에는 `ssh -t <호스트> tmux attach -t <이름>`이 보입니다.
+- **PR 맡기기**: `reflex_host`를 주면 확인과 시작 요청 모두 그 서버로 한 번 넘기고, 클론·실행 계정·tmux 는 그 서버의 것을 씁니다. 그 서버에 연결되지 않으면 허브에서 대신 실행하지 않습니다. 칸반의 맡긴 일 카드에는 `ssh -t <호스트> tmux attach -t <이름>`이 보입니다.
 - **GitHub·Jira·Notion·칸반·이름 바꾸기**: 허브의 설정과 `~/.thync`를 씁니다. 서버의 thync 가 이 출처를 켜 두어도 허브는 세션만 가져오므로 중복되지 않습니다.
 - **허브 자신의 세션**: 허브 머신의 Claude Code 세션도 `sources`에 `claude_code`가 있으면 함께 보입니다.
 

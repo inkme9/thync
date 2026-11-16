@@ -25,7 +25,7 @@ from .config import (DEFAULT_DAYS, HANDOFF, HOST, MAX_DAYS, PORT, PROFILE_PERSON
                      SESSIONS, SOURCES, STATE_DIR, WEB_DIR)
 from .export import snapshot
 from .graph import build_graph
-from .reflex import start_reflex
+from .reflex import plan_reflex, start_reflex
 from .sources import github, jira, notion, remote
 from .sources.claude_code import load_sessions, questions_of
 from .store import BOARD_COLUMNS, load_token, save_card, save_name
@@ -194,8 +194,11 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(502, {"message": "GitHub 에서 리뷰를 가져오지 못했어요"})
 
     def post_reflex(self):
+        """{id|node, check: true} -> the plan to confirm, starting nothing; {id|node, plan} -> start it (reflex.py)."""
         req = self.read_body(16384)
-        approve = req.get("approve") is True
+        check, shown = req.get("check") is True, req.get("plan")
+        if not check and not isinstance(shown, dict):
+            raise ValueError("neither check nor plan")
         if isinstance(req.get("node"), dict):
             # A hub forwarding a hand-off: it sends the PR node, which this machine's graph may not have.
             target = req["node"]
@@ -208,14 +211,22 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(404, {"message": "노드를 찾지 못했어요"})
             return
         if REFLEX_HOST and not self.forwarded():
-            status, reply = remote.by_name(REFLEX_HOST).post("/reflex", {"node": target, "approve": approve})
+            # Sent on once; if the remote cannot be reached nothing runs here, under this machine's accounts.
+            status, reply = remote.by_name(REFLEX_HOST).post("/reflex", {"node": target, "check": check, "plan": shown})
             message = str(reply.get("message", "")) or f"{REFLEX_HOST} 응답 {status}"
+            if status < 400 and isinstance(reply.get("plan"), dict):
+                self.send_json(status, {"plan": {**reply["plan"], "host": REFLEX_HOST}})
+                return
             self.send_json(status, {"message": f"{REFLEX_HOST}: {message}" if status < 400 else message})
             return
         if not HANDOFF or REFLEX_HOST:
             self.send_json(503, {"message": "이 머신에는 claude CLI 나 세션 기록이 없어 PR 을 맡길 수 없어요"})
             return
-        status, message = start_reflex(target, approve)
+        if check:
+            status, plan = plan_reflex(target)
+            self.send_json(status, {"plan": plan} if status == 200 else plan)
+            return
+        status, message = start_reflex(target, shown)
         self.send_json(status, {"message": message})
 
     def post_ask(self):

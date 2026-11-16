@@ -5,6 +5,5 @@
   "jira_email": "me@example.com",
   "notion_user_id": "",
   "cards_dir": "~/.thync/cards",
-  "port": 8765,
-  "reflex_skills": {"sent": "pr-review-watch"}
+  "port": 8765
 }

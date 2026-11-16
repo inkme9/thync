@@ -222,7 +222,7 @@ def sessions(now: float, window: float) -> list[tuple[RemoteSession, float, int]
 
 
 def reflexes() -> dict[str, dict]:
-    """PR hand-offs the remotes run: {url: record plus "host", "ssh" and, for tmux ones, "alive"}."""
+    """PR hand-offs the remotes run: {url: record plus "host", "ssh", "alive" and "exit"}."""
     out = {}
     for r in _remotes:
         with r.lock:

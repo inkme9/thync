@@ -21,6 +21,12 @@ class ThyncRenderer extends BrainRenderer {
     if (dropped && this.nearSpine(point.x, point.y)) this.onSpineDrop(dropped);
   };
 
+  /** Whether a drop at page coordinates (a row dragged from the side panel) lands on the spine. */
+  onSpine(event: MouseEvent): boolean {
+    const point = this.localPoint(event);
+    return this.nearSpine(point.x, point.y);
+  }
+
   // Project the spine's center line with the same camera as render-core and measure the drop distance.
   private nearSpine(x: number, y: number): boolean {
     const scale = Math.min(this.width, this.height) * 0.32 * this.zoom;

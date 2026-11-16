@@ -32,7 +32,7 @@ flowchart TD
     Main --> Views["panel.ts · board.ts · live.ts · detail.ts"]
     Main --> Write["POST /rename · /board · /reflex · /answer"]
     Write --> Store
-    Write --> Reflex["reflex.py · review.py: PR 위임"]
+    Write --> Reflex["reflex.py: PR 위임"]
 ```
 
 설정과 저장 파일은 기본 `~/.thync/`에 둡니다. 세션 로그는 `~/.claude/projects/`(Claude Code)와 `~/.codex/sessions/`(Codex) 아래의 JSONL 파일에서 읽습니다. 외부 수집 주기는 [설정 안내](configuration.md#수집-주기와-범위)에 정리했습니다.
@@ -86,8 +86,7 @@ flowchart TD
 | `graph.py` | 출처를 모아 노드·연결·작업 단위·활동 목록을 만듭니다 |
 | `model.py` | 연구에서 가져온 규칙으로 밝기, 상태, 작업공간, 진행 중 여부를 정합니다 ([brain-model.md](brain-model.md)) |
 | `board.py` | 칸반 카드와 자동 칸을 계산하고, 카드 파일에 사용자가 지정한 값을 최종 카드에 적용합니다. 파일 저장은 `store.py`가 맡습니다 |
-| `reflex.py` | PR을 Claude에게 맡깁니다. 내 PR은 로컬 저장소를 찾아 tmux에서 Claude Code를 실행하고, 남의 PR은 `review.py`로 넘깁니다 |
-| `review.py` | 남의 PR을 임시 폴더에 받아 `claude -p --restricted`로 읽기만 시키고, 돌려받은 리뷰를 확인해 올립니다 |
+| `reflex.py` | PR을 Concord 작업으로 맡깁니다. 로컬 클론, mien 프로필, `gh` 계정, PR 작성자를 확인하고(`plan_reflex`), tmux에서 Claude Code로 `review-until-approve`(남의 PR)나 `pr-to-merge`(내 PR)를 시작합니다([설계](design/review-handoff.md)) |
 | `server.py` | HTTP 처리, 토큰 확인, 화면 파일 제공 |
 | `mcp.py` | 표준 입출력 MCP 서버. `thync_now` 도구로 패널과 '맡긴 일' 목록을 짧은 글로 반환합니다 |
 | `hook.py` | Claude Code SessionStart hook. 실행 중인 서버의 그래프를 세션 폴더의 프로필로 줄여 세션 맥락에 넣는다 |
@@ -189,8 +188,8 @@ flowchart TD
 | `POST /ask` | `{id, session, questions[]}` | 질문 hook 이 잡아 둔 질문을 알립니다. Claude Code 는 hook 이 끝난 뒤에야 질문을 세션 로그에 적으므로, 기다리는 동안에는 이 알림으로 그 세션의 `waiting`을 채웁니다. hook 이 5초 넘게 묻지 않거나 답을 가져가면 사라집니다 |
 | `POST /answer` | `{id, answers[]}` | 화면에서 고른 답을 hook 에 넘깁니다. hook 이 기다리지 않는 질문이면 `409` |
 | `POST /board` | `{id, column?, title?, note?, reset?}` 또는 `{new: true, title, column?, profile?}` | 카드 파일을 고치거나 새 카드를 만듭니다 |
-| `POST /reflex` | `{id, approve?}` 또는 `{node, approve?}` | PR 노드를 Claude에게 맡깁니다. `reflex_host`가 있으면 노드를 그 서버로 넘기고, 넘겨받은 서버는 `node`를 그대로 씁니다 |
-| `GET /sessions.json?days=` | 없음 | 다른 서버의 허브가 1.5초마다 읽습니다. `sessions[]`(세션 하나에 `id`, `source`, `cwd`, `branch`, `title`, `ai_title`, `prompts`(첫 프롬프트, 최근 집중 창 안의 프롬프트, 마지막 프롬프트), `prs`, `files`(최근 1시간), `events`(최근 활동 창), `claude_turn`, `waiting`, `last_at`, `last`, `subs`, `profile`, `repo`, `reflex`, `answerable`)과 `reflexes`(이 서버가 실행 중인 PR 위임, tmux 면 `alive`). `ETag`가 같으면 `304`, `Accept-Encoding: gzip`이면 압축합니다 |
+| `POST /reflex` | `{id \| node, check: true}` 또는 `{id \| node, plan}` | `check`는 실행할 계획(`plan`)을 돌려주고 아무것도 시작하지 않습니다. `plan`을 보내면 다시 확인하고, 계정·프로필·작업이 같을 때만 시작합니다. `reflex_host`가 있으면 노드를 그 서버로 한 번 넘기고, 넘겨받은 서버는 `node`를 그대로 씁니다 |
+| `GET /sessions.json?days=` | 없음 | 다른 서버의 허브가 1.5초마다 읽습니다. `sessions[]`(세션 하나에 `id`, `source`, `cwd`, `branch`, `title`, `ai_title`, `prompts`(첫 프롬프트, 최근 집중 창 안의 프롬프트, 마지막 프롬프트), `prs`, `files`(최근 1시간), `events`(최근 활동 창), `claude_turn`, `waiting`, `last_at`, `last`, `subs`, `profile`, `repo`, `reflex`, `answerable`)과 `reflexes`(이 서버가 실행하는 PR 위임과 `alive`(tmux 세션 있음), `exit`(종료 코드)). `ETag`가 같으면 `304`, `Accept-Encoding: gzip`이면 압축합니다 |
 
 허브가 다른 서버로 넘기는 요청(`/answer`, `/reflex`)에는 `X-Thync-Forwarded: 1`이 붙고, 받은 서버는 그 요청을 다시 넘기지 않습니다. 다른 서버 세션의 질문에 대한 `POST /answer`는 그 서버로 넘어가, 그 서버의 질문 hook 이 답을 가져갑니다.
 

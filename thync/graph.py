@@ -11,7 +11,7 @@ from . import ask, board, model
 from .config import (ACTIVITY_SEC, BACKGROUND_SEC, DEFAULT_DAYS, FILES_PER_SESSION, FILES_SEC, FOCUS_SEC, HANDOFF,
                      JIRA_DONE, JIRA_TODO, LIVE_FILE_SEC, LIVE_SESSION_SEC, PROFILE_PERSONAL, PROFILE_WORK, PRS_PER_SESSION,
                      RUNNING_STALE_SEC, COMPANY_ROOTS, SESSIONS, SOURCES)
-from .reflex import REFLEX_SKILL
+from .reflex import WORKFLOW
 from .sources import github, notion, remote
 from .sources.claude_code import load_sessions, repo_of
 from .sources.jira import BRANCH_KEY, TITLE_KEY, Jira
@@ -80,7 +80,7 @@ def merge_units(units: dict, links: dict[str, set[str]]) -> dict[str, str]:
 def reflex_of(s, reflexes: dict) -> str:
     """The PR url when thync started this session for a handed-off PR (it begins with '/<skill> <pr url>')."""
     first = s.prompts[0][1].split()
-    return (first[1] if s.source == "claude_code" and len(first) > 1 and first[0].lstrip("/") in REFLEX_SKILL.values()
+    return (first[1] if s.source == "claude_code" and len(first) > 1 and first[0].lstrip("/") in WORKFLOW.values()
             and first[1] in reflexes else "")
 
 

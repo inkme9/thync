@@ -5,6 +5,8 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
+import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -170,11 +172,65 @@ class HubTest(unittest.TestCase):
         self.r.fetch()
         node = {"id": "pr:https://github.com/o/r/pull/3", "roles": ["sent"],
                 "detail": {"url": "https://github.com/o/r/pull/3", "repo": "r"}}
+        shown = {"url": node["detail"]["url"], "workflow": "concord:pr-to-merge", "profile": "p", "login": "me"}
         with mock.patch.object(server, "HANDOFF", True), mock.patch.object(server, "REFLEX_HOST", ""), \
+                mock.patch.object(server, "plan_reflex", return_value=(200, shown)) as plan, \
                 mock.patch.object(server, "start_reflex", return_value=(202, "시작했어요")) as start:
-            status, reply = self.r.post("/reflex", {"node": node, "approve": False})
+            checked = self.r.post("/reflex", {"node": node, "check": True, "plan": None})
+            self.assertEqual(start.call_count, 0)  # a check starts nothing
+            status, reply = self.r.post("/reflex", {"node": node, "check": False, "plan": shown})
+        self.assertEqual(checked, (200, {"plan": shown}))
+        self.assertEqual(plan.call_args.args[0]["detail"]["url"], node["detail"]["url"])
         self.assertEqual((status, reply["message"]), (202, "시작했어요"))
-        self.assertEqual(start.call_args.args[0]["detail"]["url"], node["detail"]["url"])
+        self.assertEqual((start.call_args.args[0]["detail"]["url"], start.call_args.args[1]), (node["detail"]["url"], shown))
+
+    def test_hub_sends_a_handoff_on_once_and_never_runs_it_itself(self):
+        self.r.fetch()
+        node = {"id": "pr:https://github.com/o/r/pull/3", "name": "r #3", "kind": "source", "roles": ["review"],
+                "detail": {"url": "https://github.com/o/r/pull/3", "repo": "r"}}
+        hub = RemoteThync([])
+        try:
+            sent = []
+
+            def post(path, body):
+                sent.append((path, body))
+                return 202, {"message": "시작했어요"}
+
+            with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
+                    mock.patch.object(server, "build_graph", return_value={"nodes": [node]}), \
+                    mock.patch.object(self.r, "post", post), \
+                    mock.patch.object(server, "start_reflex") as start, mock.patch.object(server, "plan_reflex") as plan:
+                status, reply = self.call(hub, {"id": node["id"], "plan": {"login": "me"}})
+                self.assertEqual((status, reply["message"]), (202, "devbox1: 시작했어요"))
+                self.assertEqual(sent, [("/reflex", {"node": node, "check": False, "plan": {"login": "me"}})])
+                self.r.ok, self.r.error = False, "연결 끊김"
+                with mock.patch.object(self.r, "post", remote.Remote.post.__get__(self.r)):
+                    status, _ = self.call(hub, {"id": node["id"], "check": True})
+                self.assertEqual(status, 503)
+            self.assertEqual((start.call_count, plan.call_count), (0, 0))  # never run on the hub
+        finally:
+            hub.close()
+
+    def test_forwarded_handoff_on_a_machine_with_its_own_reflex_host_is_refused(self):
+        self.r.fetch()
+        node = {"id": "pr:https://github.com/o/r/pull/3", "roles": ["sent"],
+                "detail": {"url": "https://github.com/o/r/pull/3", "repo": "r"}}
+        with mock.patch.object(server, "HANDOFF", True), mock.patch.object(server, "REFLEX_HOST", "devbox2"), \
+                mock.patch.object(server, "start_reflex") as start:
+            status, _ = self.r.post("/reflex", {"node": node, "check": False, "plan": {}})
+        self.assertEqual((status, start.call_count), (503, 0))
+
+    @staticmethod
+    def call(hub, body):
+        """POST /reflex to a thync the browser talks to (not forwarded)."""
+        req = urllib.request.Request(f"http://127.0.0.1:{hub.port}/reflex", data=json.dumps(body).encode(),
+                                     headers={"X-Thync-Token": "secret", "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.loads(e.read())
 
 
 class ExportTest(unittest.TestCase):
