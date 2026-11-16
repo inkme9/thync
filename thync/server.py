@@ -4,7 +4,8 @@
 answers to a remote session's question and, with `reflex_host`, PR hand-offs are forwarded to that machine.
 
 Binds to 127.0.0.1 only. Data and writes also require the X-Thync-Token header, because on a shared
-machine other local users can reach 127.0.0.1 too. The static page holds no data and needs no token.
+machine other local users can reach 127.0.0.1 too, and with `tailscale serve` so can every tailnet device the
+tailnet's access rules let in. The static page holds no data and needs no token.
 """
 import gzip
 import hmac
@@ -50,7 +51,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def local_host(self) -> bool:
         """Reject other Host names (DNS rebinding). The port is free because SSH may forward from any port.
-        `*.ts.net` is let through for `tailscale serve`: only Tailscale's DNS answers for that domain."""
+        `*.ts.net` is let through for `tailscale serve`. Public DNS for that domain is Tailscale's, but a hostile
+        resolver (an untrusted Wi-Fi network) can still rebind such a name, so there the token is what protects data."""
         host = urlsplit("//" + self.headers.get("Host", "")).hostname or ""
         if host in LOCAL_HOSTS or host.endswith(".ts.net"):
             return True

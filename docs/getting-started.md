@@ -61,11 +61,15 @@ open "http://localhost:8765/#t=$(ssh <user>@<server> 'cat ~/.thync/token')"
 
 ## Tailscale로 접속하기
 
-휴대폰처럼 SSH를 쓰기 어려운 기기에서는 thync를 실행한 컴퓨터에서 `tailscale serve`로 서버를 tailnet에 엽니다. 같은 tailnet에 로그인한 기기만 접속할 수 있습니다.
+휴대폰처럼 SSH를 쓰기 어려운 기기에서는 thync를 실행한 컴퓨터에서 `tailscale serve`로 서버를 tailnet에 엽니다. tailnet 관리 콘솔에서 MagicDNS와 HTTPS 인증서가 켜져 있어야 합니다.
+
+접속할 수 있는 기기는 tailnet 접근 규칙(ACL)이 정합니다. 이 컴퓨터를 공유받은 다른 tailnet의 사용자나, 회사 tailnet처럼 여러 사람이 쓰는 tailnet의 다른 구성원도 화면을 열 수 있습니다. 이들에게는 접근 토큰이 유일한 보호 수단이므로 토큰을 공유하지 않습니다.
 
 ```bash
 tailscale serve --bg 8765
 ```
+
+`port`를 바꿨다면 `8765` 대신 그 포트를 씁니다.
 
 출력된 `https://<기기 이름>.<tailnet 이름>.ts.net/` 주소 끝에 `#t=<토큰>`을 붙여 한 번 엽니다. 이후에는 토큰 없이 같은 주소로 접속합니다. 끄려면 `tailscale serve --https=443 off`를 실행합니다.
 
