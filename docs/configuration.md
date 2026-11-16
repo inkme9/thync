@@ -27,7 +27,7 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 
 | 키 | 뜻 | 기본값 |
 | --- | --- | --- |
-| `sources` | 읽을 출처. `claude_code`(Claude Code 세션 로그), `codex`(Codex CLI 세션 로그), `github`(내 커밋, 리뷰 요청, 내 PR), `jira`(나에게 배정된 티켓), `notion`(최근에 고친 페이지), `obsidian`(`obsidian_vaults`에 적은 vault에서 최근에 고친 노트) | 여섯 가지 모두 |
+| `sources` | 읽을 출처. `claude_code`(Claude Code 세션 로그), `codex`(Codex CLI·Desktop 세션 로그), `github`(내 커밋, 리뷰 요청, 내 PR), `jira`(나에게 배정된 티켓), `notion`(최근에 고친 페이지), `obsidian`(`obsidian_vaults`에 적은 vault에서 최근에 고친 노트) | 여섯 가지 모두 |
 | `company_roots` | 이 폴더 아래에서 시작한 세션은 회사 프로필이 됩니다. PR을 맡길 때 로컬 저장소를 찾는 위치이기도 합니다 | `[]` (세션은 모두 개인) |
 | `jira_browse_url` | Jira 티켓 링크 앞부분 (예: `https://example.atlassian.net/browse/`). 티켓 정보를 받아 올 주소도 여기서 정합니다 | 없음 (링크 없음) |
 | `jira_email` | Jira Cloud 계정 이메일. API 토큰과 함께 있으면 티켓 요약·상태·상위 이슈를 자동으로 받아 옵니다 | 없음 (`jira.json`을 손으로 채움) |
@@ -164,6 +164,6 @@ cat > "${THYNC_HOME:-$HOME/.thync}/notion_token"
 | Notion | 백그라운드에서 1분마다 갱신을 시도하며, 결과는 기본 120초 동안 재사용합니다. 최근 수정 순 최대 100개, `notion_user_id`가 있으면 최대 300개를 받아 필터링합니다 |
 | Obsidian | 백그라운드에서 vault 폴더를 훑고, 마치면 30초 뒤에 다시 훑습니다. 최근 30일 안에 수정한 `.md` 파일 가운데 최근 수정 순으로 vault 전체를 합쳐 최대 100개를 쓰고, 파일마다 앞쪽 256KB까지 읽습니다. 노트 하나에서 Jira 키와 PR 주소는 각각 10개까지 씁니다 |
 | Claude Code | 로컬 세션 로그에서 새로 추가된 줄을 이어 읽습니다. `sources`에서 제외하면 읽지 않습니다 |
-| Codex | `~/.codex/sessions/` 아래 세션 로그를 Claude Code와 같은 방식으로 이어 읽습니다. `sources`에서 제외하면 읽지 않습니다 |
+| Codex | `~/.codex/sessions/` 아래 세션 로그를 Claude Code와 같은 방식으로 이어 읽습니다. 사용자가 Codex CLI·Codex Desktop·ChatGPT iOS 원격 실행으로 연 세션을 읽습니다. 다른 Codex 스레드가 띄운 하위 세션, `codex exec` 실행, Claude Code가 Codex에 맡긴 작업은 세지 않습니다. `sources`에서 제외하면 읽지 않습니다 |
 
 `jira` 출처를 끄면 배정 티켓 수집을 멈춥니다. 다만 다른 출처에서 발견한 Jira 키의 요약 조회는 Jira 주소·이메일·토큰이 설정되어 있으면 계속 동작합니다. Jira API 조회 전체를 끄려면 해당 인증 설정도 제거하고 서버를 재시작합니다.

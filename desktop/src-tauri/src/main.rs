@@ -12,12 +12,14 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
 
-const HUB: &str = "http://127.0.0.1:8765";
-
+/// $THYNC_HOME with a leading ~ expanded, as the hub does, else ~/.thync.
 fn state_dir() -> PathBuf {
-    std::env::var("THYNC_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".thync"))
+    let home = PathBuf::from(std::env::var("HOME").unwrap_or_default());
+    match std::env::var("THYNC_HOME") {
+        Ok(p) if p == "~" => home,
+        Ok(p) => p.strip_prefix("~/").map(|rest| home.join(rest)).unwrap_or_else(|| PathBuf::from(p)),
+        Err(_) => home.join(".thync"),
+    }
 }
 
 fn token() -> Option<String> {
@@ -25,6 +27,31 @@ fn token() -> Option<String> {
         .ok()
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
+}
+
+/// The hub's address: 127.0.0.1 on the `port` the hub reads from config.json, 8765 when unset (or the file is
+/// missing or not JSON, as for the hub). A `port` that cannot be read is an error, not 8765: whatever else listens
+/// there must not get the token.
+fn hub() -> Result<String, String> {
+    let config = std::fs::read_to_string(state_dir().join("config.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+    port_of(config.as_ref())
+        .map(|p| format!("http://127.0.0.1:{p}"))
+        .ok_or_else(|| "config.json 의 port 를 읽지 못했어요".to_string())
+}
+
+/// `port` as the hub reads it (`int(...)`): a number or a numeric string; 8765 when the key is absent. A config the
+/// hub cannot start with (`"port": null`, a root that is not an object) gives None.
+fn port_of(config: Option<&serde_json::Value>) -> Option<u16> {
+    use serde_json::Value;
+    let Some(config) = config else { return Some(8765) };
+    match config.as_object()?.get("port") {
+        None => Some(8765),
+        Some(Value::Number(n)) => n.as_u64().and_then(|p| u16::try_from(p).ok()),
+        Some(Value::String(s)) => s.trim().parse().ok(),
+        Some(_) => None,
+    }
 }
 
 /// The thync checkout this app was built from; used to start the hub when there is no ~/.thync/run.sh.
@@ -38,7 +65,7 @@ fn status() -> Result<serde_json::Value, String> {
     let token = token().ok_or("thync 토큰이 없어요")?;
     let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(3)).build();
     agent
-        .get(&format!("{HUB}/status.json"))
+        .get(&format!("{}/status.json", hub()?))
         .set("X-Thync-Token", &token)
         .call()
         .map_err(|e| e.to_string())?
@@ -46,23 +73,22 @@ fn status() -> Result<serde_json::Value, String> {
         .map_err(|e| e.to_string())
 }
 
-fn show_main(app: &AppHandle) -> tauri::Result<()> {
+fn show_main(app: &AppHandle) -> Result<(), String> {
     if let Some(w) = app.get_webview_window("main") {
-        w.show()?;
-        w.unminimize()?;
-        return w.set_focus();
+        return w.show().and_then(|_| w.unminimize()).and_then(|_| w.set_focus()).map_err(|e| e.to_string());
     }
-    let url: tauri::Url = format!("{HUB}/#t={}", token().unwrap_or_default()).parse().expect("hub url");
+    let url: tauri::Url = format!("{}/#t={}", hub()?, token().unwrap_or_default()).parse().map_err(|e| format!("{e}"))?;
     let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
         .title("thync")
         .inner_size(1400.0, 900.0)
-        .build()?;
-    w.set_focus()
+        .build()
+        .map_err(|e| e.to_string())?;
+    w.set_focus().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn open_thync(app: AppHandle) -> Result<(), String> {
-    show_main(&app).map_err(|e| e.to_string())
+    show_main(&app)
 }
 
 /// A macOS notification and a short sound, for a question waiting on me or a long run that just ended.
@@ -145,4 +171,23 @@ fn main() {
             api.prevent_exit();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::port_of;
+    use serde_json::json;
+
+    #[test]
+    fn port_matches_the_hub() {
+        assert_eq!(port_of(None), Some(8765));
+        assert_eq!(port_of(Some(&json!({}))), Some(8765));
+        assert_eq!(port_of(Some(&json!({"port": 8766}))), Some(8766));
+        assert_eq!(port_of(Some(&json!({"port": " 8766 "}))), Some(8766));
+        assert_eq!(port_of(Some(&json!({"port": 70000}))), None);
+        assert_eq!(port_of(Some(&json!({"port": "abc"}))), None);
+        assert_eq!(port_of(Some(&json!({"port": [8766]}))), None);
+        assert_eq!(port_of(Some(&json!({"port": null}))), None);
+        assert_eq!(port_of(Some(&json!([]))), None);
+    }
 }
