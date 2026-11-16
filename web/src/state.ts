@@ -37,9 +37,10 @@ export function notableUnits(nodes: ApiNode[]): Set<string> {
 }
 
 // Which nodes the selected tab and toggles let through: in-progress work, plus either all past work
-// or only what in-progress work is directly linked to.
+// or only what in-progress work of the same tab is directly linked to. The second adds one hop to the
+// server's live rule (model.mark_live) without its exclusions, so closed tickets and older sessions can show.
 function inView(): (n: ApiNode) => boolean {
-  const live = new Set(state.data.nodes.filter((n) => n.detail.live).map((n) => n.id));
+  const live = new Set(state.data.nodes.filter((n) => n.detail.live && inProfile(n.profile)).map((n) => n.id));
   const linked = new Set<string>();
   if (state.showLinked && !state.showAll) {
     for (const [a, b] of state.data.edges) {

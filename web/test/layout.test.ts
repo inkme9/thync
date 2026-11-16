@@ -29,4 +29,10 @@ test("with showLinked, nodes directly linked to in-progress work join the brain;
   assert.deepEqual(Object.keys(toGraph().idx), ["a"]);
   state.showLinked = true;
   assert.deepEqual(Object.keys(toGraph().idx).sort(), ["a", "b"]);
+  state.showAll = true;                                   // past work wins: everything in the period
+  assert.deepEqual(Object.keys(toGraph().idx).sort(), ["a", "b", "c"]);
+  Object.assign(state, { showAll: false, profile: "개인" }); // in-progress work of another tab links nothing in
+  state.data.nodes[1] = { ...state.data.nodes[1], profile: "개인" };
+  assert.deepEqual(Object.keys(toGraph().idx), []);
+  state.profile = "전체";
 });

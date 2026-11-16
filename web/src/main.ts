@@ -97,7 +97,7 @@ renderer.start(canvas, () => state.graph, {
 });
 renderer.setView({ zoom: 1.25 });
 
-// --- Controls: profile tab, period, show past work. ---
+// --- Controls: profile tab, period, show past work, show what in-progress work links to. ---
 for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-profile]")) {
   btn.classList.toggle("on", btn.dataset.profile === state.profile);
   btn.onclick = () => {
@@ -118,15 +118,19 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-days]")) {
     void poll();
   };
 }
+// Past work already includes everything linked, so the second box is greyed out while the first is on.
+const showLinked = document.querySelector<HTMLInputElement>("#show-linked")!;
 for (const key of ["showAll", "showLinked"] as const) {
   const box = document.querySelector<HTMLInputElement>(`#${key === "showAll" ? "show-all" : "show-linked"}`)!;
   box.checked = state[key];
   box.onchange = () => {
     state[key] = box.checked;
     remember(key, box.checked ? "1" : "0");
+    showLinked.disabled = state.showAll;
     apply();
   };
 }
+showLinked.disabled = state.showAll;
 
 // The brain turns slowly when left alone; this button stops or restarts that, and the browser remembers it.
 const rotate = document.querySelector<HTMLButtonElement>("#rotate")!;
