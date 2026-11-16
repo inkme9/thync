@@ -1,7 +1,7 @@
 """GitHub through the `gh` CLI: review requests to me, my open PRs waiting on review, and my recent commits.
 
-With `github_profiles` set, every one of those mien profiles' accounts is read through `mien exec`, in parallel, and the
-lists are merged. Without it, gh's active account is the only one.
+With `mien_profiles` set, the GitHub account of every one of those mien profiles that has one is read through
+`mien exec`, in parallel, and the lists are merged. Without it, gh's active account is the only one.
 The calls take seconds, so refresh_forever() fetches in a background thread and requests only read what it left.
 """
 import functools
@@ -14,16 +14,16 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ..config import GITHUB_PROFILES, HOME, MAX_DAYS, REVIEW_TTL_SEC, SESSIONS, STATE_DIR
+from ..config import MIEN_PROFILES, HOME, MAX_DAYS, REVIEW_TTL_SEC, SESSIONS, STATE_DIR
 
-ACCOUNTS = GITHUB_PROFILES or [""]  # "" = gh's active account
+ACCOUNTS = MIEN_PROFILES or [""]  # "" = gh's active account
 MIEN = shutil.which("mien") or "mien"
 # gh settings folder without any login, for profile calls: gh then has only the token mien hands it.
 NO_LOGIN = STATE_DIR / "gh-no-login"
 MAX_BRANCHES = 20  # pushed branches whose head commit message is fetched
 _seen_by: dict[str, str] = {}  # PR url -> account that listed it, so its reviews are read and posted as that account
 _lists: dict[str, dict[str, list]] = {}  # account -> "reviews" | "sent" | "commits" -> what GitHub last returned
-_mine: set[str] = set()  # my logins on all accounts, lowercased
+_logins: dict[str, str] = {}  # account -> my login there, lowercased
 refreshed = 0.0  # when refresh() last finished
 FAILED = (subprocess.SubprocessError, OSError, json.JSONDecodeError, KeyError, TypeError)
 
@@ -75,9 +75,9 @@ def sent_reviews() -> list[dict]:
 
 def my_commits() -> list[dict]:
     """My commits and pushes of the last MAX_DAYS on every account: {slug, branch, at, message, url, personal}."""
-    commits = [c for a in ACCOUNTS for c in _lists.get(a, {}).get("commits", [])]
+    commits, mine = [c for a in ACCOUNTS for c in _lists.get(a, {}).get("commits", [])], set(_logins.values())
     for c in commits:
-        c["personal"] = c["slug"].split("/")[0].lower() in _mine  # my own repos are personal work
+        c["personal"] = c["slug"].split("/")[0].lower() in mine  # my own repos are personal work
     return commits
 
 
@@ -86,15 +86,15 @@ def login(account: str) -> str:
     return gh(account, "api", "user", "--jq", ".login").strip()
 
 
-def logins() -> set[str]:
-    """My logins on every account that answers, lowercased. Each is asked once; one that fails is asked again."""
-    out = set()
-    for a in ACCOUNTS:
-        try:
-            out.add(login(a).lower())
-        except FAILED:
-            pass
-    return out
+def has_github(profile: str) -> bool:
+    """Whether the mien profile carries a GitHub account. `mien whoami` reads only mien's settings, never a secret.
+    When mien cannot tell, the gh call is tried and decides."""
+    try:
+        out = subprocess.run([MIEN, "whoami", profile, "--json"], cwd=HOME, capture_output=True, text=True, timeout=30,
+                             check=True).stdout
+        return bool(json.loads(out).get("github"))
+    except FAILED:
+        return True
 
 
 @functools.lru_cache(maxsize=256)
@@ -172,7 +172,7 @@ def pr_reviews(url: str, now: float) -> dict:
         owner, name, _, number = url.split("/")[3:7]
         out = gh(account_for(url), "api", "graphql", "-f", f"query={REVIEWS_QUERY}", "-f", f"owner={owner}",
                  "-f", f"name={name}", "-F", f"number={number}")
-        data = parse_reviews(json.loads(out)["data"]["repository"]["pullRequest"], _mine)
+        data = parse_reviews(json.loads(out)["data"]["repository"]["pullRequest"], set(_logins.values()))
         _pr_reviews[url] = (now, data)
     return data
 
@@ -220,25 +220,32 @@ FETCH = {
 
 def _refresh_account(account: str, now: float) -> None:
     """Each list is shown as soon as it arrives; one that fails keeps what it had."""
+    if account and not has_github(account):
+        _lists.pop(account, None)
+        return
     for kind, fetch in FETCH.items():
         try:
             got = fetch(account, now)
         except FAILED:
             continue
         _lists[account] = {**_lists.get(account, {}), kind: got}
+    try:
+        _logins[account] = login(account).lower()
+    except FAILED:
+        pass
 
 
 def refresh(now: float) -> None:
     """Fetch every account at once. Only this does; pages read what it left, so they never wait on GitHub."""
-    global _mine, refreshed
+    global refreshed
     with ThreadPoolExecutor(len(ACCOUNTS)) as pool:
         list(pool.map(lambda a: _refresh_account(a, now), ACCOUNTS))
-    _mine, refreshed = logins() or _mine, time.time()
+    refreshed = time.time()
 
 
 def refresh_forever() -> None:
-    if GITHUB_PROFILES and not shutil.which("mien"):
-        print("thync: github_profiles needs mien on PATH; GitHub lists stay empty", file=sys.stderr, flush=True)
+    if MIEN_PROFILES and not shutil.which("mien"):
+        print("thync: mien_profiles needs mien on PATH; GitHub lists stay empty", file=sys.stderr, flush=True)
     while True:
         refresh(time.time())
         time.sleep(REVIEW_TTL_SEC)

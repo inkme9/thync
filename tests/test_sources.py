@@ -57,7 +57,10 @@ class GitHub(unittest.TestCase):
 
     def test_accounts_are_merged_and_a_failing_one_keeps_its_last_list(self):
         def run(cmd, env=None, **kw):
+            if cmd[1] == "whoami":  # c is a mien profile without GitHub
+                return subprocess.CompletedProcess(cmd, 0, json.dumps({"github": None if cmd[2] == "c" else cmd[2]}), "")
             self.assertEqual(cmd[:2], ["mien", "exec"])
+            self.assertNotEqual(cmd[2], "c")
             self.assertNotIn("GH_TOKEN", env)  # an inherited token never stands in for a profile's own
             self.assertEqual(env["GH_CONFIG_DIR"], str(github.NO_LOGIN))  # nor does gh's own login
             if cmd[2] == "b" and fail:
@@ -68,10 +71,10 @@ class GitHub(unittest.TestCase):
             return subprocess.CompletedProcess(cmd, 0, json.dumps({"items": [{"html_url": u} for u in urls]}), "")
 
         fail = False
-        with mock.patch.multiple(github, ACCOUNTS=["a", "b"], MIEN="mien", _seen_by={}, _lists={}), \
+        with mock.patch.multiple(github, ACCOUNTS=["a", "b", "c"], MIEN="mien", _seen_by={}, _lists={}, _logins={}), \
                 mock.patch.dict(os.environ, {"GH_TOKEN": "inherited"}), \
                 mock.patch.object(github.subprocess, "run", side_effect=run):
-            for a in ("a", "b"):
+            for a in ("a", "b", "c"):
                 github._refresh_account(a, 0)
             self.assertEqual([it["html_url"] for it in github.review_requests()], ["u1", "u2", "u3"])
             self.assertEqual((github.account_for("u2"), github.account_for("u3")), ("a", "b"))
