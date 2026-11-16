@@ -54,9 +54,9 @@ function nearestLobe(p: Vec3): LobeName {
 // The brain's outline as two ellipsoids from vendor shape.ts: the cerebrum (brainPoint; its lower half is squashed)
 // and the cerebellum (cerebellumPoint). A node may sit in either; one outside both is pulled toward the center of
 // the nearer one until it is within EDGE of it, which leaves room for the folds of the drawn surface.
-const CEREBRUM = { c: { x: 0, y: 0, z: 0 }, x: 0.95, up: 0.92, down: 0.69, z: 1.25 };
-const CEREBELLUM = { c: { x: 0, y: -0.55, z: -0.78 }, x: 0.40, up: 0.26, down: 0.26, z: 0.32 };
-export const EDGE = 0.94;
+export const CEREBRUM = { c: { x: 0, y: 0, z: 0 }, x: 0.95, up: 0.92, down: 0.69, z: 1.25 };
+export const CEREBELLUM = { c: { x: 0, y: -0.55, z: -0.78 }, x: 0.40, up: 0.26, down: 0.26, z: 0.32 };
+export const EDGE = 0.92; // the deepest fold dip of the drawn surface is about 0.93 of the outline
 export function outlineRatio(p: Vec3, o: typeof CEREBRUM): number {
   const dy = p.y - o.c.y;
   return Math.hypot((p.x - o.c.x) / o.x, dy / (dy < 0 ? o.down : o.up), (p.z - o.c.z) / o.z);
@@ -72,22 +72,25 @@ export const inBrain = (p: Vec3): boolean => Math.min(outlineRatio(p, CEREBRUM),
 
 // When a tier runs out of spots, later units fill the space around the same spots: each lap takes the next
 // direction of a golden-angle spiral, a little farther out (cube root, so the volume fills evenly), up to
-// OVERFLOW_MAX from the spot. Past that, units share the same shell, so a tier with hundreds of units grows
-// denser rather than spreading into the areas of other tiers.
+// OVERFLOW_MAX scaled to the tier's shape (the cerebellum for tier 4, else the cerebrum, by its smallest semi-axis).
+// Past that, units share the same shell, so a tier with hundreds of units grows denser rather than spreading
+// into the areas of other tiers.
 const OVERFLOW_MAX = 0.3;
 function tierSpot(tier: number, i: number): Vec3 {
   const spots = TIER_SPOTS[tier];
   const base = spots[i % spots.length];
   const lap = Math.floor(i / spots.length);
   if (!lap) return base;
-  const r = Math.min(OVERFLOW_MAX, 0.12 * Math.cbrt(lap));
+  const shape = tier === 4 ? CEREBELLUM : CEREBRUM; // tier 4 is the cerebellum, though some of its spots sit just above it
+  const r = Math.min(OVERFLOW_MAX * Math.min(shape.x, shape.up, shape.down, shape.z) / 0.69, 0.12 * Math.cbrt(lap));
   const theta = lap * 2.399963;
   const phi = Math.acos(1 - 2 * ((lap * 0.618034) % 1));
   let d = { x: Math.sin(phi) * Math.cos(theta), y: Math.cos(phi), z: Math.sin(phi) * Math.sin(theta) };
-  // Spots sit near the surface, so a direction pointing outward is mirrored to point into the brain instead.
-  const len = Math.hypot(base.x, base.y, base.z) || 1;
-  const out = (d.x * base.x + d.y * base.y + d.z * base.z) / len;
-  if (out > 0) d = { x: d.x - (2 * out * base.x) / len, y: d.y - (2 * out * base.y) / len, z: d.z - (2 * out * base.z) / len };
+  // Spots sit near the surface, so a direction pointing away from the shape's center is mirrored to point into it.
+  const n = { x: base.x - shape.c.x, y: base.y - shape.c.y, z: base.z - shape.c.z };
+  const len = Math.hypot(n.x, n.y, n.z) || 1;
+  const out = (d.x * n.x + d.y * n.y + d.z * n.z) / len;
+  if (out > 0) d = { x: d.x - (2 * out * n.x) / len, y: d.y - (2 * out * n.y) / len, z: d.z - (2 * out * n.z) / len };
   return insideBrain({ x: base.x + r * d.x, y: base.y + r * d.y, z: base.z + r * d.z });
 }
 
