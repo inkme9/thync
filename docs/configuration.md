@@ -33,7 +33,7 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 | `jira_email` | Jira Cloud 계정 이메일. API 토큰과 함께 있으면 티켓 요약·상태·상위 이슈를 자동으로 받아 옵니다 | 없음 (`jira.json`을 손으로 채움) |
 | `cards_dir` | 칸반 카드 파일을 둘 폴더. Obsidian vault 안 폴더를 지정해도 됩니다. 이 폴더에 있는 Obsidian Kanban 보드 파일과 UTF-8이 아닌 파일은 카드로 읽지 않습니다 | `<THYNC_HOME>/cards` (기본 `~/.thync/cards`) |
 | `port` | 서버 포트 | `8765` |
-| `tailscale_users` | `tailscale serve`로 접속할 때 토큰 없이 허용할 Tailscale 로그인 이름 목록. 예: `["me@example.com"]`. 목록의 사용자는 토큰과 같은 권한(조회, 카드 수정, PR 위임)을 받습니다. 로그인 이름은 `tailscale whois <이 기기의 Tailscale IP>`의 `User` 아래 `Name`에 나옵니다. 혼자 쓰고 믿을 수 있는 네트워크에만 연결하는 컴퓨터에서만 씁니다 ([데이터와 보안](security.md#접근-토큰과-저장-위치)) | `[]` (모두 토큰 필요) |
+| `tailscale_users` | `tailscale serve`로 접속할 때 토큰 없이 허용할 Tailscale 로그인 이름 목록. 예: `["me@example.com"]`. 목록의 사용자는 토큰과 같은 권한(조회, 카드 수정, PR 위임)을 받습니다. 로그인 이름은 `tailscale whois <이 기기의 Tailscale IP>`의 `User` 아래 `Name`에 나옵니다. `tailscale serve --bg <포트>`로 연 이 컴퓨터의 MagicDNS 주소에서만 적용됩니다. 다른 사용자가 있는 컴퓨터에서는 쓰지 않습니다 ([데이터와 보안](security.md#접근-토큰과-저장-위치)) | `[]` (모두 토큰 필요) |
 | `reflex_skills` | 내 PR을 맡길 때 실행할 Claude Code 스킬 (`sent`) | `pr-review-watch` |
 | `ask_wait_sec` | 질문 hook 이 thync 의 답을 기다리는 시간(초). 지나면 세션이 직접 묻습니다 ([사용법](usage.md#선택-대기-질문에-thync-에서-답하기-pretooluse-hook)) | `300` |
 | `remotes` | 이 화면에 함께 보일 다른 서버 목록. `[{"name": "devbox1", "ssh": "devbox1"}]`. `ssh`는 `ssh` 명령에 주는 호스트, `port`(기본 `8765`)와 `thync_home`(기본 `~/.thync`)은 그 서버의 thync 값입니다 ([여러 서버를 한 화면에서](#여러-서버를-한-화면에서)) | `[]` |

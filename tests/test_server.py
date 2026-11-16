@@ -33,6 +33,7 @@ class HostCheck(unittest.TestCase):
 class TailscaleUsers(unittest.TestCase):
     def setUp(self):
         for p in (mock.patch.object(server, "TOKEN", "t"), mock.patch.object(server, "TAILSCALE_USERS", {"me@example.com"}),
+                  mock.patch.object(server, "TAILSCALE_NAME", "mini.tail1234.ts.net"),
                   mock.patch.object(server, "build_graph", lambda days: {"days": days})):
             p.start()
             self.addCleanup(p.stop)
@@ -41,9 +42,10 @@ class TailscaleUsers(unittest.TestCase):
         self.addCleanup(self.httpd.server_close)
         self.addCleanup(self.httpd.shutdown)
 
-    def status(self, headers: dict) -> int:
+    def status(self, headers: dict, host: str = "mini.tail1234.ts.net", page: bool = True) -> int:
         conn = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=5)
-        conn.request("GET", "/graph.json", headers={"Host": "mini.tail1234.ts.net", **headers})
+        sent = {"Host": host, **({"X-Thync-Token": ""} if page else {}), **headers}
+        conn.request("GET", "/graph.json", headers=sent)
         status = conn.getresponse().status
         conn.close()
         return status
@@ -59,6 +61,17 @@ class TailscaleUsers(unittest.TestCase):
         self.assertEqual(self.status({"Tailscale-User-Login": "=?bogus?q?me=40example.com?="}), 401)
         self.assertEqual(self.status({}), 401)
         self.assertEqual(self.status({"X-Thync-Token": "t"}), 200)
+
+    def test_a_listed_login_needs_the_page_header(self):
+        """A cross-site request cannot send X-Thync-Token without a preflight (CSRF)."""
+        self.assertEqual(self.status({"Tailscale-User-Login": "me@example.com"}, page=False), 401)
+
+    def test_a_listed_login_needs_this_machines_name(self):
+        """Another *.ts.net name could be rebound to 127.0.0.1 by a hostile resolver."""
+        for host in ("evil.tail9999.ts.net", "other.tail1234.ts.net", "127.0.0.1:8765", "localhost"):
+            self.assertEqual(self.status({"Tailscale-User-Login": "me@example.com"}, host=host), 401, host)
+        with mock.patch.object(server, "TAILSCALE_NAME", ""):
+            self.assertEqual(self.status({"Tailscale-User-Login": "me@example.com"}), 401)
 
     def test_no_login_passes_when_none_is_listed(self):
         with mock.patch.object(server, "TAILSCALE_USERS", set()):

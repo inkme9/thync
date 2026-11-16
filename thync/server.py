@@ -35,6 +35,7 @@ from .store import BOARD_COLUMNS, load_token, save_card, save_name
 from .util import BOARD_CARD
 
 TOKEN = ""
+TAILSCALE_NAME = ""  # this machine's MagicDNS name, set at start when `tailscale_users` is not empty
 
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -54,7 +55,8 @@ class Handler(SimpleHTTPRequestHandler):
     def local_host(self) -> bool:
         """Reject other Host names (DNS rebinding). The port is free because SSH may forward from any port.
         `*.ts.net` is let through for `tailscale serve`. Public DNS for that domain is Tailscale's, but a hostile
-        resolver (an untrusted Wi-Fi network) can still rebind such a name, so there the token is what protects data."""
+        resolver (an untrusted Wi-Fi network) can still rebind such a name, so there the token, or the narrower
+        checks of from_tailscale_page(), is what protects data."""
         host = urlsplit("//" + self.headers.get("Host", "")).hostname or ""
         if host in LOCAL_HOSTS or host.endswith(".ts.net"):
             return True
@@ -65,10 +67,17 @@ class Handler(SimpleHTTPRequestHandler):
         sent = self.headers.get("X-Thync-Token", "").encode()
         if TOKEN and hmac.compare_digest(sent, TOKEN.encode()):
             return True
-        if TAILSCALE_USERS and self.tailscale_login() in TAILSCALE_USERS:
+        if TAILSCALE_USERS and self.tailscale_login() in TAILSCALE_USERS and self.from_tailscale_page():
             return True
         self.send_error(401, "token required")
         return False
+
+    def from_tailscale_page(self) -> bool:
+        """Sent by thync's own page at this machine's MagicDNS name. X-Thync-Token, even empty, is a header a page
+        of another site cannot send without a CORS preflight, which this server never grants: that stops CSRF.
+        The exact name stops DNS rebinding, because while Tailscale runs, MagicDNS answers that name itself."""
+        host = urlsplit("//" + self.headers.get("Host", "")).hostname or ""
+        return bool(TAILSCALE_NAME) and host == TAILSCALE_NAME and "X-Thync-Token" in self.headers
 
     def tailscale_login(self) -> str:
         """Tailscale-User-Login as `tailscale serve` sends it: RFC 2047 encoded when it is not ASCII."""
@@ -333,10 +342,23 @@ def session_state(n: dict) -> dict:
             "background": "running" in n["roles"]}
 
 
+def own_tailscale_name() -> str:
+    """This machine's MagicDNS name (mini.tail1234.ts.net); "" when the tailscale CLI cannot tell."""
+    try:
+        out = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=10)
+        return str(json.loads(out.stdout)["Self"]["DNSName"]).rstrip(".").casefold()
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        return ""
+
+
 def main() -> None:
-    global TOKEN
+    global TOKEN, TAILSCALE_NAME
     os.umask(0o077)
     TOKEN = load_token()
+    if TAILSCALE_USERS:
+        TAILSCALE_NAME = own_tailscale_name()
+        print(f"thync: tailscale_users open https://{TAILSCALE_NAME}/ without the token" if TAILSCALE_NAME
+              else "thync: tailscale_users ignored: `tailscale status` gave no name for this machine", flush=True)
     print(f"thync: http://{HOST}:{PORT}/  (first time: enter the contents of {STATE_DIR / 'token'} on the page)", flush=True)
     # Exit through atexit on kill/pkill too, so the SSH tunnels to remotes close with the server.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
