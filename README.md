@@ -34,7 +34,7 @@ thync는 여러 서비스에 흩어진 활동을 작업 단위로 묶습니다. 
 
 ### 1. 준비하고 실행합니다
 
-Python 3.10 이상, 화면 빌드용 Node.js 18 이상, 인증된 [GitHub CLI](https://cli.github.com/)가 필요합니다. GitHub CLI는 `gh auth login`으로 인증합니다. Python은 표준 라이브러리만 사용하며, Jira·Notion·Obsidian·Claude Code·Codex 연동은 선택 사항입니다.
+Python 3.10 이상, 화면 빌드용 Node.js 18 이상, 인증된 [GitHub CLI](https://cli.github.com/)가 필요합니다. GitHub CLI는 `gh auth login`으로 인증하거나, 여러 계정을 쓰려면 [mien](https://github.com/arinyaho/mien) 프로필을 `mien_profiles`에 적습니다([설정](docs/configuration.md)). Python은 표준 라이브러리만 사용하며, Jira·Notion·Obsidian·Claude Code·Codex 연동은 선택 사항입니다.
 
 ```bash
 git clone https://github.com/choiahrok/thync.git

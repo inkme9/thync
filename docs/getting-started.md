@@ -6,7 +6,7 @@
 
 - Python 3.10 이상 (표준 라이브러리만 사용합니다)
 - Node.js 18 이상 (화면 코드를 빌드할 때만)
-- [GitHub CLI](https://cli.github.com/) (`gh auth login` 된 상태) — 내 커밋, 리뷰 요청, 내 PR
+- [GitHub CLI](https://cli.github.com/) (`gh auth login` 된 상태, 또는 `mien_profiles`에 적은 [mien](https://github.com/arinyaho/mien) 프로필) — 내 커밋, 리뷰 요청, 내 PR
 - 선택: Jira Cloud API 토큰 — 나에게 배정된 티켓 ([연결 설정](configuration.md#jira와-notion-연결))
 - 선택: Notion integration 토큰 — 최근에 고친 Notion 페이지
 - 선택: Obsidian vault 폴더 — 최근에 고친 노트 ([연결 설정](configuration.md#obsidian))
@@ -87,7 +87,7 @@ tailscale serve --bg 8765
 | --- | --- |
 | 화면 코드가 없거나 변경 사항이 보이지 않음 | 저장소 루트에서 `npm ci`와 `npm run build`를 실행하고 새로고침합니다 |
 | 토큰이 필요하다는 안내가 나옴 | 현재 서버의 `token` 파일 내용을 화면 위쪽 입력 칸에 넣습니다. `localhost`와 `127.0.0.1`은 브라우저 저장소가 다릅니다 |
-| GitHub 활동이 보이지 않음 | 서버를 실행하는 사용자로 `gh auth status`를 확인하고, `sources`에 `github`가 있는지 확인합니다 |
+| GitHub 활동이 보이지 않음 | 서버를 실행하는 사용자로 `gh auth status`를 확인하고, `sources`에 `github`가 있는지 확인합니다. `mien_profiles`를 쓰면 프로필마다 `mien whoami <프로필>`에 `github`가 있는지 확인합니다. 없는 프로필은 건너뜁니다 |
 | Jira·Notion 활동이 보이지 않음 | [연결 설정](configuration.md#jira와-notion-연결)의 필수 값과 페이지 연결을 확인한 뒤 서버를 재시작합니다 |
 | '맡긴 일' 칸이 보이지 않음 | `sources`에 `claude_code`가 있고 서버 환경에서 `claude` CLI를 찾을 수 있는지 확인합니다 |
 | 포트가 이미 사용 중임 | 기존 서버를 종료하거나 `config.json`의 `port`를 바꾸고 서버를 재시작합니다 |
