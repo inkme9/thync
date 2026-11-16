@@ -339,7 +339,7 @@ class Graph(unittest.TestCase):
         self.assertEqual(self.nodes[note]["detail"]["unit"], note)                # the body does not decide the unit
         self.assertTrue(self.linked(note, "jira:ABC-5") and self.linked(note, "jira:ABC-77"))
         self.assertEqual(self.nodes["jira:ABC-5"]["detail"]["unit"], "jira:ABC-5")  # an existing ticket keeps its unit
-        # A ticket the note made sits in the note's unit: a node in "common" is never drawn (web/src/state.ts).
+        # A ticket the note made sits in the note's unit: only repositories in "common" are drawn (web/src/state.ts).
         self.assertEqual(self.nodes["jira:ABC-77"]["detail"]["unit"], note)
         self.assertTrue(self.nodes["jira:ABC-77"]["detail"]["mention"])
         self.assertEqual(self.nodes["jira:ABC-77"]["profile"], "회사")

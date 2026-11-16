@@ -8,7 +8,7 @@ import { reactToChanges, renderLive, resetLive } from "./live.ts";
 import { renderPanel, setStatus } from "./panel.ts";
 import { openReflex } from "./reflex.ts";
 import { renderer } from "./renderer.ts";
-import { notableUnits, recall, remember, shown, state } from "./state.ts";
+import { notableUnits, onBrain, recall, remember, shown, state } from "./state.ts";
 import { colorOf, look } from "./style.ts";
 import { checkWaiting } from "./waiting.ts";
 
@@ -17,7 +17,7 @@ export function apply(): void {
   const d = state.data;
   // Which units carry a title is part of the shape: a unit gaining or losing focus re-lays the titles.
   const notable = notableUnits(shown());
-  const sig = [state.profile, state.showAll, state.days, d.units.map((u) => u.id).join(","), d.nodes.map((n) => n.id).join(","), d.edges.length,
+  const sig = [state.profile, state.showAll, state.days, d.units.map((u) => u.id).join(","), onBrain().map((n) => n.id).join(","), d.edges.map((e) => e.join(">")).join(","),
     [...notable].sort().join(",")].join("|");
   if (sig !== state.signature) {
     state.signature = sig;

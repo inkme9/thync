@@ -105,8 +105,8 @@ export function toGraph(): BrainGraph {
     const own = COLLECTION_UNITS.has(unit) ? tierSpot(tier, hash(n.id) % (TIER_SPOTS[tier].length * 2)) : undefined;
     at.set(n.id, spineAt.get(n.id) ?? placeNear(n.id, own ?? anchorOf.get(unit) ?? TIER_SPOTS[2][0], own ? 0.05 : spread));
   }
-  // A shared repository sits at the center of the work it joins, so its lines run between units.
-  // One with nothing on the brain to join is left off.
+  // A repository in "common" sits at the center of the work it joins, so a repository several units use
+  // draws lines between them. One with nothing on the brain to join is left off.
   const near = new Map<string, Vec3[]>();
   for (const [a, b] of state.data.edges) {
     for (const [x, y] of [[a, b], [b, a]]) {

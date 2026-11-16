@@ -37,9 +37,10 @@ export function notableUnits(nodes: ApiNode[]): Set<string> {
 
 const inView = (n: ApiNode): boolean => inProfile(n.profile) && (state.showAll || Boolean(n.detail.live));
 
-// Work listed in the panel: in-progress work of the selected tab. Repositories shared by several
-// work units ("common") are left out.
+// Work listed in the panel: in-progress work of the selected tab. Nodes without a work unit ("common") are left out.
 export const shown = (): ApiNode[] => state.data.nodes.filter((n) => n.detail.unit !== "common" && inView(n));
 
-/** Nodes on the brain: the listed work plus shared repositories, which sit between the units they join. */
-export const onBrain = (): ApiNode[] => state.data.nodes.filter(inView);
+/** Nodes on the brain: the listed work plus repositories in "common", which sit between the units they join.
+ * Other "common" nodes (a ticket only a review request title named) stay off. */
+export const onBrain = (): ApiNode[] =>
+  state.data.nodes.filter((n) => (n.detail.unit !== "common" || n.kind === "repo") && inView(n));

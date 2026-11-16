@@ -243,10 +243,11 @@ export class BrainRenderer extends RenderCore {
     // thync: lines take their nodes' colors, brighten with the hotter end, and add up where they cross,
     // so dense relations read as bright strands between clusters
     const heat = Math.max(edge.A.glow ?? 0, edge.B.glow ?? 0);
+    const rest = (isFar ? 0.09 : 0.2) + heat * (isFar ? 0.18 : 0.32);
     const baseA = (isFocus ? (isFar ? 0.55 : 0.85)
-      : isHover ? (isFar ? 0.25 : 0.40)
-        : (isFar ? 0.07 : 0.14) + heat * (isFar ? 0.18 : 0.32)) * lobeM;
-    ctx.lineWidth = isFocus ? 1.3 : (isFar ? 0.55 : 0.7) + heat * 0.5;
+      : isHover ? Math.max(isFar ? 0.25 : 0.40, rest * 1.5)
+        : rest) * lobeM;
+    ctx.lineWidth = isFocus ? 1.3 : (isFar ? 0.55 : 0.7) + heat * 0.5 + (isHover ? 0.3 : 0);
     ctx.globalCompositeOperation = "lighter";
     for (let index = 0; index < edge.pts.length - 1; index += 1) {
       const p0 = edge.pts[index];
