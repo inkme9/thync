@@ -178,8 +178,15 @@ def board_column(lane: str, complete: bool, checked: bool) -> str:
     return "doing" if words & DOING_WORDS else "todo"
 
 
+EMPHASIS = re.compile(r"(\*\*|~~|==|\*)(?=[^\s*~=])(.+?)(?<=[^\s*~=])\1")  # marks around text, not a line of marks
+
+
 def _plain(text: str) -> str:
-    return WIKILINK.sub(r"\1", text).replace("**", "")
+    """Card text without its markup: links and embeds as their names, emphasis without its marks."""
+    text = WIKILINK.sub(r"\1", text.replace("![[", "[["))
+    for _ in range(3):  # **bold *and italic***
+        text = EMPHASIS.sub(r"\2", text)
+    return text
 
 
 def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
@@ -190,7 +197,7 @@ def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
     items: list[dict] = []
     lane = item = None
     for line in text[FRONT_MATTER.match(text).end():].split("\n"):
-        if line.startswith("%% kanban:settings") or line.strip() == "***":  # the settings block; the archive
+        if line.startswith("%% kanban:settings") or line.rstrip() == "***":  # the settings block; the archive (column 0)
             break
         heading, entry = LANE.match(line), ITEM.match(line)
         if heading:
@@ -216,7 +223,7 @@ def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
         title, lead = (bold.group(1), bold.group(2).lstrip("—–-:· \t")) if bold else (first, "")
         column = board_column(it["lane"]["name"], it["lane"]["complete"], it["checked"])
         cards.append({"id": BOARD_CARD + digest + (f"-{seen[digest]}" if seen[digest] > 1 else ""),
-                      "title": " ".join(_plain(title).split())[:200],
+                      "title": " ".join(_plain(title).split())[:200] or "(제목 없음)",
                       "note": "\n".join(_plain(x) for x in ([lead] if lead else []) + rest)[:4000],
                       "sub": "", "column": column, "auto_column": column, "moved": False, "profile": profile,
                       "updated": updated, "focus": "", "file": path, "url": url, "readonly": True,
@@ -224,16 +231,21 @@ def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
     return cards
 
 
-def _read_board(board: dict, st: os.stat_result) -> list[dict]:
+def _read_board(board: dict, st: os.stat_result) -> list[dict] | None:
+    """The board's cards; [] when the file is no board; None when it could not be read (try again next time)."""
     try:
         # O_NOFOLLOW and O_NONBLOCK: between the lstat and here the file may have become a symlink or a FIFO.
         fd = os.open(board["path"], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     except OSError:
-        return []
-    with os.fdopen(fd, "rb") as f:
-        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
-            return []
-        data = f.read(READ_BYTES + 1)
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):  # or a folder, which opens but cannot be read
+            os.close(fd)
+            return None
+        with os.fdopen(fd, "rb") as f:
+            data = f.read(READ_BYTES + 1)
+    except OSError:
+        return None
     if len(data) > READ_BYTES:
         data = data[:data.rfind(b"\n", 0, READ_BYTES) + 1]  # whole lines only
     try:
@@ -255,7 +267,10 @@ def board_cards() -> list[dict]:
         return []
     key = (st.st_mtime_ns, st.st_ctime_ns, st.st_size, st.st_ino, st.st_dev)
     if _board[0] != key:
-        _board = (key, _read_board(OBSIDIAN_BOARD, st))  # "not a board" is kept too, so it is not read every time
+        cards = _read_board(OBSIDIAN_BOARD, st)
+        if cards is None:  # a failed read is not kept: the same file may be readable a moment later
+            return []
+        _board = (key, cards)  # "not a board" is kept too, so it is not read every time
     return [{**c, "tags": list(c["tags"])} for c in _board[1]]  # copies: the kept cards are shared between requests
 
 

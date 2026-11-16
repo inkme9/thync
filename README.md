@@ -56,7 +56,7 @@ cat "${THYNC_HOME:-$HOME/.thync}/token"
 
 ### 3. 필요한 출처와 에이전트를 연결합니다
 
-설정 파일이 없으면 GitHub·Jira·Notion·Obsidian·Claude Code·Codex 여섯 출처가 기본으로 활성화됩니다. Jira와 Notion의 API 수집에는 별도 인증 설정이 필요하고, Obsidian은 `obsidian_vaults`에 vault 폴더를 적어야 읽습니다. 세션 로그를 읽지 않으려면 `sources`에서 `claude_code`와 `codex`를 제외합니다. [예제 설정](config.example.json)은 세션 로그를 제외한 구성입니다.
+설정 파일이 없으면 GitHub·Jira·Notion·Obsidian·Claude Code·Codex 여섯 출처가 기본으로 활성화됩니다. Jira와 Notion의 API 수집에는 별도 인증 설정이 필요하고, Obsidian은 `obsidian_vaults`에 vault 폴더를, `obsidian_board`에 칸반 보드 파일을 적어야 읽습니다. 세션 로그를 읽지 않으려면 `sources`에서 `claude_code`와 `codex`를 제외합니다. [예제 설정](config.example.json)은 세션 로그를 제외한 구성입니다.
 
 - Jira·Notion·Obsidian을 연결하거나 수집할 출처를 바꾸려면 [설정 안내](docs/configuration.md)를 확인합니다.
 - 에이전트가 현재 맥락을 조회하게 하려면 [MCP 등록 방법](docs/usage.md#에이전트에서-지금-하는-일-묻기-mcp)을 확인합니다.

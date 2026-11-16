@@ -39,9 +39,12 @@ function cardView(c: ApiCard): HTMLDivElement {
   }
   el.append(title, sub, note, tags);
   if (c.focus) el.prepend(infoButton(c.focus));
-  el.onclick = () => {
+  el.onclick = (e) => {
     const url = opens(c);
-    if (url) { location.href = url; return; }  // the browser hands it to Obsidian; the page stays
+    if (url) {  // the browser hands it to Obsidian; the page stays. e.detail: the second click of a double click
+      if (e.detail <= 1) location.href = url;
+      return;
+    }
     // A waiting card opens the question it waits on; the others show their work on the brain.
     const asking = c.column === "waiting" && state.data.nodes.find((n) => n.detail.unit === c.id && n.detail.waiting);
     if (asking) showWaiting(asking);

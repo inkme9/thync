@@ -89,31 +89,28 @@ def parse_card(text: str) -> tuple[dict, str]:
 _skipped: set[Path] = set()  # files in the card folder that are not card files, so each is reported once
 
 
-def _not_a_card(path: Path) -> str:
-    """Why a file in the card folder is not read as a card file and must not be written over, or ''.
+def _card_text(path: Path) -> tuple[str | None, str]:
+    """(text, '') of a card file, or (None, why) when the file is not one and must not be written over.
     A board of the Obsidian Kanban plugin: read as a card it would show every card's text as one note, and
     saving that card would rewrite the board's front matter. A file that is not UTF-8: thync cannot tell what
-    it holds."""
+    it holds. A file that is missing or unreadable is (None, '')."""
     try:
-        return "an Obsidian Kanban board" if is_kanban(path.read_text(encoding="utf-8")) else ""
+        text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
-        return "not UTF-8"
+        return None, "not UTF-8"
     except OSError:
-        return ""
+        return None, ""
+    return (None, "an Obsidian Kanban board") if is_kanban(text) else (text, "")
 
 
 def read_cards() -> dict[str, dict]:
     cards = {}
     for path in sorted(CARDS_DIR.glob("*.md")):
-        why = _not_a_card(path)
-        if why:
-            if path not in _skipped:  # once per file for as long as the server runs
-                _skipped.add(path)
-                print(f"thync: {path} is {why}, not a card file; skipped", file=sys.stderr, flush=True)
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        text, why = _card_text(path)
+        if why and path not in _skipped:  # once per file for as long as the server runs
+            _skipped.add(path)
+            print(f"thync: {path} is {why}, not a card file; skipped", file=sys.stderr, flush=True)
+        if text is None:
             continue
         meta, note = parse_card(text)
         cid = meta.get("id") or f"manual:{path.stem}"
@@ -149,7 +146,7 @@ def _save_card(cid: str, change: dict) -> None:
         note = change["note"]
     path = card["path"]
     # read_cards() skips these files, so a card id whose file name is one of them would otherwise land on it.
-    why = _not_a_card(path)
+    why = _card_text(path)[1]
     if why:
         raise ValueError(f"{path} is {why}")
     if not note and set(meta) <= {"id"}:

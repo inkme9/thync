@@ -80,6 +80,7 @@ class Format(unittest.TestCase):
     def test_a_file_is_a_board_by_its_front_matter_key(self):
         self.assertTrue(is_kanban("---\nkanban-plugin: board\n---\n"))
         self.assertTrue(is_kanban("--- \r\ntags: [a]\r\nkanban-plugin: list\r\n---\r\n## 칸\r\n"))
+        self.assertTrue(is_kanban("\ufeff---\nkanban-plugin: board\n---\n"))        # a byte order mark before it
         self.assertFalse(is_kanban("---\ntitle: kanban-plugin: board\n---\n"))
         self.assertFalse(is_kanban("kanban-plugin: board\n"))
         self.assertFalse(is_kanban("---\nid: x\n---\n\nkanban-plugin: board\n"))
@@ -136,6 +137,19 @@ class Format(unittest.TestCase):
                 "%% kanban:settings\n```\n- [ ] 설정\n```\n%%\n")
         self.assertEqual([c["title"] for c in cards_of(text)], ["남는 카드"])
         self.assertEqual([c["title"] for c in cards_of(TEMPLATE.replace("%% kanban:settings", "%% kanban:settings\n- [ ] 설정"))][-1], "끝낸 일")
+
+    def test_three_stars_inside_a_card_do_not_end_the_board(self):
+        text = "---\nkanban-plugin: board\n---\n\n## Ideas\n\n- [ ] 첫 카드\n    위\n    ***\n    아래\n- [ ] 둘째 카드\n\n## Done\n\n- [ ] 셋째\n"
+        cards = cards_of(text)
+        self.assertEqual([c["title"] for c in cards], ["첫 카드", "둘째 카드", "셋째"])
+        self.assertEqual(cards[0]["note"], "위\n***\n아래")
+
+    def test_markup_is_taken_out_of_the_title_and_the_note(self):
+        head = "---\nkanban-plugin: board\n---\n\n## Ideas\n\n"
+        (card,) = cards_of(head + "- [ ] *기울임* ~~지움~~ ==강조== ![[그림.png]] 2*3\n  **굵게** [[노트]]\n")
+        self.assertEqual((card["title"], card["note"]), ("기울임 지움 강조 그림.png 2*3", "굵게 노트"))
+        (blank,) = cards_of(head + "- [ ] ** **\n")
+        self.assertEqual(blank["title"], "(제목 없음)")
 
     def test_long_text_and_many_cards_are_cut(self):
         text = "---\nkanban-plugin: board\n---\n\n## Ideas\n\n" + "".join(f"- [ ] 카드 {i}\n" for i in range(250))
@@ -214,7 +228,27 @@ class BoardFile(unittest.TestCase):
         t = threading.Thread(target=lambda: done.append(obsidian._read_board(obsidian.OBSIDIAN_BOARD, st)), daemon=True)
         t.start()
         t.join(3)
-        self.assertEqual(done, [[]])
+        self.assertEqual(done, [None])
+
+    def test_a_file_swapped_for_a_link_or_a_folder_after_the_listing_is_not_read(self):
+        st = os.lstat(self.path)
+        real = self.root / "real.md"
+        self.path.rename(real)
+        os.symlink(real, self.path)                   # O_NOFOLLOW: the link is not followed to a real board
+        self.assertIsNone(obsidian._read_board(obsidian.OBSIDIAN_BOARD, st))
+        self.path.unlink()
+        self.path.mkdir()                             # opens, but is no regular file
+        self.assertIsNone(obsidian._read_board(obsidian.OBSIDIAN_BOARD, st))
+
+    def test_a_read_that_failed_is_tried_again_on_the_next_request(self):
+        real_open = os.open
+        with mock.patch.object(obsidian.os, "open", side_effect=OSError(24, "Too many open files")):
+            self.assertEqual(self.titles(), [])
+        self.assertEqual(len(self.titles()), 6)       # the file did not change; the failure was not kept
+        with mock.patch.object(obsidian.os, "fdopen", side_effect=OSError(5, "Input/output error")), \
+                mock.patch.object(obsidian, "_board", (None, [])):
+            self.assertEqual(self.titles(), [])       # an error while reading gives no cards and does not escape
+        self.assertEqual(real_open, os.open)
 
     def test_a_file_that_is_no_board_gives_no_cards(self):
         self.titles()
@@ -270,6 +304,21 @@ class CardFolder(unittest.TestCase):
         store.save_card("manual:board", {"column": "doing"})   # what POST /board did to the board before
         self.assertEqual(board_file.read_text(encoding="utf-8"), TEMPLATE)
         self.assertEqual(sorted(store.read_cards()), ["manual:board", "manual:mine"])  # a card file of its own
+
+    def test_a_board_that_starts_with_a_byte_order_mark_is_left_alone_too(self):
+        board_file = store.card_path("jira:ABC-9")
+        board_file.write_text("\ufeff" + TEMPLATE, encoding="utf-8")
+        self.assertEqual(store.read_cards(), {})
+        with self.assertRaises(ValueError):
+            store.save_card("jira:ABC-9", {"column": "doing"})
+        self.assertEqual(board_file.read_text(encoding="utf-8"), "\ufeff" + TEMPLATE)
+
+    def test_each_card_file_is_read_once_a_request(self):
+        for i in range(3):
+            (self.cards / f"c{i}.md").write_text(f"---\nid: manual:c{i}\n---\n", encoding="utf-8")
+        with mock.patch.object(Path, "read_text", autospec=True, side_effect=Path.read_text) as read:
+            self.assertEqual(len(store.read_cards()), 3)
+        self.assertEqual(read.call_count, 3)
 
     def test_saving_a_card_never_overwrites_a_kanban_file(self):
         target = store.card_path("jira:ABC-1")

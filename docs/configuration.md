@@ -152,6 +152,8 @@ cat > "${THYNC_HOME:-$HOME/.thync}/notion_token"
 - 상세 패널의 링크를 누르면 Obsidian에서 그 노트가 열립니다.
 - 코드 블록과 인라인 코드 안의 내용, `.obsidian`처럼 `.`으로 시작하는 폴더, 칸반 카드 폴더(`cards_dir`), 심볼릭 링크는 읽지 않습니다.
 
+누가 고쳤는지는 알 수 없어서 파일 수정 시각만 봅니다. 동기화 도구가 수정 시각을 바꾸면 고치지 않은 노트도 보일 수 있습니다. 그 밖의 한계는 [설계 문서](design/obsidian-source.md#치르는-비용)에 있습니다.
+
 #### Obsidian 칸반 보드
 
 Obsidian의 Kanban 플러그인으로 만든 보드 하나를 thync 칸반에 함께 볼 수 있습니다. `obsidian_board`에 보드 파일을 적고 서버를 다시 시작합니다. `sources`에 `"obsidian"`이 있어야 합니다.
@@ -168,8 +170,8 @@ Obsidian의 Kanban 플러그인으로 만든 보드 하나를 thync 칸반에 �
 
   | thync의 칸 | 보드의 칸 |
   | --- | --- |
-  | 완료 | 체크한 카드(`- [x]`), 플러그인에서 완료 칸으로 표시한 칸, 이름에 `완료`·`종료`·`done`·`complete`·`closed`가 낱말로 든 칸 |
-  | 진행 중 | 이름에 `진행`·`대기`·`막힘`·`확인`·`검수`·`doing`·`progress`·`blocked`·`waiting`·`review`가 낱말로 든 칸 |
+  | 완료 | 체크한 카드(`- [x]`), 플러그인에서 완료 칸으로 표시한 칸, 이름에 `완료`·`완료됨`·`종료`·`done`·`complete`·`completed`·`closed`가 낱말로 든 칸 |
+  | 진행 중 | 이름에 `진행`·`진행중`·`대기`·`막힘`·`확인`·`검수`·`doing`·`progress`·`blocked`·`waiting`·`review`가 낱말로 든 칸 |
   | Todo | 그 밖의 칸 |
 
 - 보관함(`***` 아래)의 카드는 보이지 않습니다. 카드는 200장까지, 파일은 앞쪽 256KB까지 읽습니다.
@@ -178,7 +180,6 @@ Obsidian의 Kanban 플러그인으로 만든 보드 하나를 thync 칸반에 �
 
 이유와 한계는 [설계 문서](design/obsidian-board.md)에 있습니다.
 
-누가 고쳤는지는 알 수 없어서 파일 수정 시각만 봅니다. 동기화 도구가 수정 시각을 바꾸면 고치지 않은 노트도 보일 수 있습니다. 그 밖의 한계는 [설계 문서](design/obsidian-source.md#치르는-비용)에 있습니다.
 
 ## 수집 주기와 범위
 

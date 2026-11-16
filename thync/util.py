@@ -17,7 +17,7 @@ FRONT_MATTER = re.compile(r"\A---[ \t]*\n(.*?)^---[ \t]*$", re.S | re.M)
 def is_kanban(text: str) -> bool:
     """Whether a Markdown file is a board of the Obsidian Kanban plugin: its front matter has a `kanban-plugin`
     key. The board reader and the card-file reader both ask here, so no file is a board to one and a card to the other."""
-    front = FRONT_MATTER.match(text.replace("\r\n", "\n"))
+    front = FRONT_MATTER.match(text.lstrip("\ufeff").replace("\r\n", "\n"))
     return bool(front and KANBAN_KEY.search(front.group(1)))
 
 
