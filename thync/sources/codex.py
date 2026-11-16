@@ -53,9 +53,10 @@ class CodexSession(Session):
                 self.spawned = True  # until this line proves otherwise: a malformed first meta hides the log
                 if not isinstance(d.get("payload"), dict):
                     return
-                # A subagent of another Codex thread (like a sidechain), or a `codex exec` run another program started.
+                # A subagent of another Codex thread (like a sidechain), or a run another program started and prompted:
+                # `codex exec`, or a task Claude Code handed to Codex. The program's own session shows on its own.
                 self.spawned = (isinstance(p.get("source"), dict) or p.get("thread_source") == "subagent"
-                                or p.get("source") == "exec")
+                                or p.get("source") == "exec" or p.get("originator") == "Claude Code")
                 self.id = p.get("id") or self.id
                 self.cwd = p.get("cwd") or ""
                 self.branch = (p.get("git") or {}).get("branch") or ""

@@ -133,6 +133,6 @@ cat > "${THYNC_HOME:-$HOME/.thync}/notion_token"
 | Jira | 배정 티켓은 약 5분, 그래프에서 발견한 키의 요약은 약 10분 간격으로 갱신합니다. 배정 티켓 검색은 최근 수정 순 최대 50개입니다 |
 | Notion | 백그라운드에서 1분마다 갱신을 시도하며, 결과는 기본 120초 동안 재사용합니다. 최근 수정 순 최대 100개, `notion_user_id`가 있으면 최대 300개를 받아 필터링합니다 |
 | Claude Code | 로컬 세션 로그에서 새로 추가된 줄을 이어 읽습니다. `sources`에서 제외하면 읽지 않습니다 |
-| Codex | `~/.codex/sessions/` 아래 세션 로그를 Claude Code와 같은 방식으로 이어 읽습니다. Codex CLI·Codex Desktop에서 연 세션을 읽습니다. 다른 Codex 스레드가 띄운 하위 세션과 `codex exec` 실행은 세지 않습니다. `sources`에서 제외하면 읽지 않습니다 |
+| Codex | `~/.codex/sessions/` 아래 세션 로그를 Claude Code와 같은 방식으로 이어 읽습니다. 사용자가 Codex CLI·Codex Desktop·ChatGPT iOS 원격 실행으로 연 세션을 읽습니다. 다른 Codex 스레드가 띄운 하위 세션, `codex exec` 실행, Claude Code가 Codex에 맡긴 작업은 세지 않습니다. `sources`에서 제외하면 읽지 않습니다 |
 
 `jira` 출처를 끄면 배정 티켓 수집을 멈춥니다. 다만 다른 출처에서 발견한 Jira 키의 요약 조회는 Jira 주소·이메일·토큰이 설정되어 있으면 계속 동작합니다. Jira API 조회 전체를 끄려면 해당 인증 설정도 제거하고 서버를 재시작합니다.

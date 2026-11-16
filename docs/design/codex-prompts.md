@@ -50,12 +50,13 @@
 
 - 다른 Codex 스레드가 띄운 하위 세션은 지금처럼 세지 않습니다. 첫 `session_meta`의 `source`가 객체이거나 `thread_source`가 `"subagent"`이면 하위 세션입니다. `source`가 문자열인 하위 세션도 있기 때문입니다.
 - 로그에서 처음 나온 `session_meta` 줄만 씁니다. 처음 나온 `session_meta`를 읽지 못하면(객체가 아닌 `payload` 등) 그 로그를 하위 세션처럼 숨깁니다. 뒤의 복사본을 쓰는 것보다 숨기는 쪽이 부모 세션과 섞이지 않습니다. 부모 스레드에서 갈라진 하위 세션의 로그는 자기 `session_meta` 뒤에 부모의 `session_meta`와 부모의 대화를 복사해 둡니다. 뒤의 `session_meta`를 쓰면 하위 세션이 부모의 id를 가진 일반 세션이 되고, 부모의 프롬프트가 한 번 더 세어집니다.
-- `codex exec`로 실행한 세션(첫 `session_meta`의 `source`가 `"exec"`)도 세지 않습니다. 확인한 로그의 `exec` 세션 130개는 모두 다른 프로그램(리뷰·검증 자동화)이 띄운 1회성 실행이었습니다. 프롬프트는 모두 프로그램이 쓴 지시문 1개였고, 사람이 이어서 친 글은 없었습니다. 이 실행을 띄운 세션은 그래프에 따로 나오므로, 하위 세션과 같이 다룹니다. 세면 이런 작업이 있는 날 그래프에 세션이 수십 개씩 생기고, 프로그램이 쓴 지시문이 세션 제목, MCP 응답, `/sessions.json`에 들어갑니다.
+- `codex exec`로 실행한 세션(첫 `session_meta`의 `source`가 `"exec"`)도 세지 않습니다. 확인한 로그의 `exec` 세션 130개는 모두 다른 프로그램(리뷰·검증 자동화)이 띄운 1회성 실행이었습니다. 프롬프트는 모두 프로그램이 쓴 지시문 1개였고, 사람이 이어서 친 글은 없었습니다. Claude Code가 Codex에 작업을 맡긴 세션(첫 `session_meta`의 `originator`가 `"Claude Code"`)도 같은 모양이어서(확인한 2개 모두 프로그램이 쓴 지시문 1개) 세지 않습니다. 이 실행을 띄운 세션은 그래프에 따로 나오므로, 하위 세션과 같이 다룹니다. 세면 이런 작업이 있는 날 그래프에 세션이 수십 개씩 생기고, 프로그램이 쓴 지시문이 세션 제목, MCP 응답, `/sessions.json`에 들어갑니다.
 
 ## 치르는 비용
 
 - 사용자가 `<`나 `#`으로 시작하는 글(HTML 조각, Markdown 제목)을 `## My request` 제목 없이 바로 보내면 프롬프트로 세지 않습니다. 그 메시지만 있는 세션은 그래프에 나오지 않습니다.
-- 사용자가 터미널에서 직접 실행한 `codex exec`도 세션으로 나오지 않습니다. 확인한 로그에는 그런 실행이 없었습니다. 위의 7일 로그 236개에서 나온 Codex 세션은 13개입니다.
+- 사용자가 터미널에서 직접 실행한 `codex exec`도 세션으로 나오지 않습니다. 확인한 로그에는 그런 실행이 없었습니다. 위의 7일 로그 236개에서 나온 Codex 세션은 11개입니다.
+- Claude Code 말고 다른 프로그램이 Codex를 띄우면 `originator`가 달라서 그 세션은 일반 세션으로 셉니다. 그 프로그램이 쓴 지시문이 세션 제목, MCP 응답, `/sessions.json`에 들어갑니다. 확인한 로그의 `originator`는 `Codex Desktop`, `codex_exec`, `codex_chatgpt_ios_remote`, `Claude Code`뿐이었습니다.
 - 파일만 첨부하거나 응답 주석만 단 차례는 프롬프트가 되지 않으므로 그 차례의 활동 기록과 `last_at`도 생기지 않습니다. 위의 로그에서 차례 단위로 각각 2개, 6개였습니다. 파일 첨부와 질문에 대한 답만 있는 차례 1개는 따로 셌습니다.
 - 두 형식이 섞인 로그에서 한 형식의 줄이 빠지면, 그 뒤에 같은 글을 다시 친 입력 하나를 짝으로 보고 세지 않을 수 있습니다.
 
@@ -89,7 +90,7 @@
 | 하위 세션(`source`가 문자열, `thread_source`가 `"subagent"`) | 아무 줄 | 무시. 세션이 나오지 않음 | introduced | `test_thread_source_subagent_with_a_string_source` |
 | 처음 나온 `session_meta`를 읽음 | 두 번째 `session_meta`(갈라진 하위 세션의 부모 복사본) | 무시. id, `cwd`, 브랜치, 하위 세션 여부는 첫 줄의 값 그대로. 하위 세션이면 뒤의 복사된 프롬프트도 세지 않음 | introduced | `test_a_fork_keeps_its_own_session_meta` |
 | 처음 나온 `session_meta`를 읽지 못함 | 두 번째 `session_meta`와 사용자 글 | 하위 세션으로 보고 세지 않음 | introduced | `test_a_malformed_first_meta_does_not_adopt_the_copied_parent` |
-| `source`가 `"exec"` | 아무 줄 | 무시. 세션이 나오지 않음 | introduced | `test_subagent_and_exec_are_not_sessions` |
+| `source`가 `"exec"`, 또는 `originator`가 `"Claude Code"` | 아무 줄 | 무시. 세션이 나오지 않음 | introduced | `test_subagent_and_exec_are_not_sessions` |
 | `source`가 `"cli"`·`"vscode"` | 사용자 글 메시지 | 일반 세션으로 나옴 | introduced | `test_subagent_and_exec_are_not_sessions` |
 | 아무 상태 | `content`가 문자열, `text`가 없음·`null`, 블록이 객체가 아님, JSON이 아닌 줄 | 그 줄만 건너뛰고 다음 줄을 읽음 | introduced | `test_malformed_lines_are_skipped` |
 | 아무 상태 | 줄바꿈 없이 반쯤 쓴 마지막 줄 | 읽지 않고 남겨 두었다가, 줄이 끝난 뒤 다음 `update()`에서 읽음 | unchanged | `test_half_written_last_line_waits`, `Parsing.test_codex_log` |

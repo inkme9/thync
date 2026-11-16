@@ -129,6 +129,9 @@ class CodexPrompts(unittest.TestCase):
         self.assertIsNone(_load_one(sub, NOW, 7 * 86400, CodexSession))
         run = self.write([meta("exec"), user(ts(50), "do x")])
         self.assertIsNone(_load_one(run, NOW, 7 * 86400, CodexSession))
+        handed = {"type": "session_meta", "timestamp": ts(100), "payload": {
+            "id": "h", "cwd": "/w", "source": "vscode", "originator": "Claude Code"}}
+        self.assertIsNone(_load_one(self.write([handed, user(ts(50), "do x")]), NOW, 7 * 86400, CodexSession))
         for source in ("cli", "vscode"):  # typed in the CLI, Codex Desktop or the IDE extension
             self.assertIsNotNone(_load_one(self.write([meta(source), user(ts(50), "do x")]), NOW, 7 * 86400,
                                            CodexSession), source)
