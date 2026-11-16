@@ -59,6 +59,18 @@ open "http://localhost:8765/#t=$(ssh <user>@<server> 'cat ~/.thync/token')"
 
 `THYNC_HOME`이나 포트를 바꿨다면 토큰 경로와 포워딩 주소도 그 설정에 맞춥니다.
 
+## Tailscale로 접속하기
+
+휴대폰처럼 SSH를 쓰기 어려운 기기에서는 thync를 실행한 컴퓨터에서 `tailscale serve`로 서버를 tailnet에 엽니다. 같은 tailnet에 로그인한 기기만 접속할 수 있습니다.
+
+```bash
+tailscale serve --bg 8765
+```
+
+출력된 `https://<기기 이름>.<tailnet 이름>.ts.net/` 주소 끝에 `#t=<토큰>`을 붙여 한 번 엽니다. 이후에는 토큰 없이 같은 주소로 접속합니다. 끄려면 `tailscale serve --https=443 off`를 실행합니다.
+
+`tailscale funnel`은 서버를 인터넷 전체에 공개하므로 쓰지 않습니다.
+
 ## 실행이 잘되지 않을 때
 
 | 증상 | 확인할 내용 |

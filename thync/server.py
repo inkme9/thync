@@ -49,8 +49,10 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(WEB_DIR), **kwargs)
 
     def local_host(self) -> bool:
-        """Reject other Host names (DNS rebinding). The port is free because SSH may forward from any port."""
-        if urlsplit("//" + self.headers.get("Host", "")).hostname in LOCAL_HOSTS:
+        """Reject other Host names (DNS rebinding). The port is free because SSH may forward from any port.
+        `*.ts.net` is let through for `tailscale serve`: only Tailscale's DNS answers for that domain."""
+        host = urlsplit("//" + self.headers.get("Host", "")).hostname or ""
+        if host in LOCAL_HOSTS or host.endswith(".ts.net"):
             return True
         self.send_error(403, "bad host")
         return False
