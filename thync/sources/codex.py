@@ -51,6 +51,8 @@ class CodexSession(Session):
         if kind == "session_meta":
             if self.subagent is None:  # a forked log copies its parent's session_meta after its own; keep the first
                 self.subagent = True  # until this line proves otherwise: a malformed first meta hides the log
+                if not isinstance(d.get("payload"), dict):
+                    return
                 # Spawned by another Codex thread, like a sidechain.
                 self.subagent = isinstance(p.get("source"), dict) or p.get("thread_source") == "subagent"
                 self.id = p.get("id") or self.id
