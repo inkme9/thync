@@ -4,7 +4,8 @@
 answers to a remote session's question and, with `reflex_host`, PR hand-offs are forwarded to that machine.
 
 Binds to 127.0.0.1 only. Data and writes also require the X-Thync-Token header, because on a shared
-machine other local users can reach 127.0.0.1 too. The static page holds no data and needs no token.
+machine other local users can reach 127.0.0.1 too, and with `tailscale serve` so can every tailnet device the
+tailnet's access rules let in. The static page holds no data and needs no token.
 """
 import gzip
 import hmac
@@ -49,8 +50,11 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(WEB_DIR), **kwargs)
 
     def local_host(self) -> bool:
-        """Reject other Host names (DNS rebinding). The port is free because SSH may forward from any port."""
-        if urlsplit("//" + self.headers.get("Host", "")).hostname in LOCAL_HOSTS:
+        """Reject other Host names (DNS rebinding). The port is free because SSH may forward from any port.
+        `*.ts.net` is let through for `tailscale serve`. Public DNS for that domain is Tailscale's, but a hostile
+        resolver (an untrusted Wi-Fi network) can still rebind such a name, so there the token is what protects data."""
+        host = urlsplit("//" + self.headers.get("Host", "")).hostname or ""
+        if host in LOCAL_HOSTS or host.endswith(".ts.net"):
             return True
         self.send_error(403, "bad host")
         return False
@@ -321,7 +325,7 @@ def main() -> None:
     global TOKEN
     os.umask(0o077)
     TOKEN = load_token()
-    print(f"thync: http://{HOST}:{PORT}/  (first time: append #t=<contents of {STATE_DIR / 'token'}>)", flush=True)
+    print(f"thync: http://{HOST}:{PORT}/  (first time: enter the contents of {STATE_DIR / 'token'} on the page)", flush=True)
     # Exit through atexit on kill/pkill too, so the SSH tunnels to remotes close with the server.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     if REMOTES:
