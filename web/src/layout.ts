@@ -51,14 +51,47 @@ function nearestLobe(p: Vec3): LobeName {
   return best;
 }
 
-// When a tier runs out of spots, step around the same spots.
+// The brain's outline as two ellipsoids from vendor shape.ts: the cerebrum (brainPoint; its lower half is squashed)
+// and the cerebellum (cerebellumPoint). A node may sit in either; one outside both is pulled toward the center of
+// the nearer one until it is within EDGE of it, which leaves room for the folds of the drawn surface.
+export const CEREBRUM = { c: { x: 0, y: 0, z: 0 }, x: 0.95, up: 0.92, down: 0.69, z: 1.25 };
+export const CEREBELLUM = { c: { x: 0, y: -0.55, z: -0.78 }, x: 0.40, up: 0.26, down: 0.26, z: 0.32 };
+export const EDGE = 0.92; // the deepest fold dip of the drawn surface is about 0.93 of the outline
+export function outlineRatio(p: Vec3, o: typeof CEREBRUM): number {
+  const dy = p.y - o.c.y;
+  return Math.hypot((p.x - o.c.x) / o.x, dy / (dy < 0 ? o.down : o.up), (p.z - o.c.z) / o.z);
+}
+export function insideBrain(p: Vec3): Vec3 {
+  const [big, small] = [outlineRatio(p, CEREBRUM), outlineRatio(p, CEREBELLUM)];
+  if (Math.min(big, small) <= EDGE) return p;
+  const [o, e] = big <= small ? [CEREBRUM, big] : [CEREBELLUM, small];
+  const k = EDGE / e;
+  return { x: o.c.x + (p.x - o.c.x) * k, y: o.c.y + (p.y - o.c.y) * k, z: o.c.z + (p.z - o.c.z) * k };
+}
+export const inBrain = (p: Vec3): boolean => Math.min(outlineRatio(p, CEREBRUM), outlineRatio(p, CEREBELLUM)) <= EDGE + 1e-9;
+
+// When a tier runs out of spots, later units fill the space around the same spots: each lap takes the next
+// direction of a golden-angle spiral, a little farther out (cube root, so the volume fills evenly), up to
+// OVERFLOW_MAX scaled to the tier's shape (the cerebellum for tier 4, else the cerebrum, by its smallest semi-axis).
+// Past that, units share the same shell, so a tier with hundreds of units grows denser rather than spreading
+// into the areas of other tiers.
+const OVERFLOW_MAX = 0.3;
 function tierSpot(tier: number, i: number): Vec3 {
   const spots = TIER_SPOTS[tier];
   const base = spots[i % spots.length];
   const lap = Math.floor(i / spots.length);
   if (!lap) return base;
-  const a = lap * 2.1;
-  return { x: base.x + 0.13 * Math.cos(a), y: base.y + 0.1 * Math.sin(a), z: base.z + 0.06 * lap };
+  const shape = tier === 4 ? CEREBELLUM : CEREBRUM; // tier 4 is the cerebellum, though some of its spots sit just above it
+  const r = Math.min(OVERFLOW_MAX * Math.min(shape.x, shape.up, shape.down, shape.z) / 0.69, 0.12 * Math.cbrt(lap));
+  const theta = lap * 2.399963;
+  const phi = Math.acos(1 - 2 * ((lap * 0.618034) % 1));
+  let d = { x: Math.sin(phi) * Math.cos(theta), y: Math.cos(phi), z: Math.sin(phi) * Math.sin(theta) };
+  // Spots sit near the surface, so a direction pointing away from the shape's center is mirrored to point into it.
+  const n = { x: base.x - shape.c.x, y: base.y - shape.c.y, z: base.z - shape.c.z };
+  const len = Math.hypot(n.x, n.y, n.z) || 1;
+  const out = (d.x * n.x + d.y * n.y + d.z * n.z) / len;
+  if (out > 0) d = { x: d.x - (2 * out * n.x) / len, y: d.y - (2 * out * n.y) / len, z: d.z - (2 * out * n.z) / len };
+  return insideBrain({ x: base.x + r * d.x, y: base.y + r * d.y, z: base.z + r * d.z });
 }
 
 // Title color of a unit: its strongest role, else its profile.
@@ -103,7 +136,7 @@ export function toGraph(): BrainGraph {
     const hubLike = n.id === unit || isSource(n);
     const spread = TIER_SPREAD[tier] * (hubLike ? 0.45 : 1);
     const own = COLLECTION_UNITS.has(unit) ? tierSpot(tier, hash(n.id) % (TIER_SPOTS[tier].length * 2)) : undefined;
-    at.set(n.id, spineAt.get(n.id) ?? placeNear(n.id, own ?? anchorOf.get(unit) ?? TIER_SPOTS[2][0], own ? 0.05 : spread));
+    at.set(n.id, spineAt.get(n.id) ?? insideBrain(placeNear(n.id, own ?? anchorOf.get(unit) ?? TIER_SPOTS[2][0], own ? 0.05 : spread)));
   }
   // A repository in "common" sits at the center of the work it joins, so a repository several units use
   // draws lines between them. One with nothing on the brain to join is left off.
@@ -118,7 +151,7 @@ export function toGraph(): BrainGraph {
     const ps = near.get(n.id);
     if (n.detail.unit !== "common" || !ps) continue;
     const mid = (k: "x" | "y" | "z") => ps.reduce((sum, p) => sum + p[k], 0) / ps.length;
-    at.set(n.id, placeNear(n.id, { x: mid("x"), y: mid("y"), z: mid("z") }, 0.05));
+    at.set(n.id, insideBrain(placeNear(n.id, { x: mid("x"), y: mid("y"), z: mid("z") }, 0.05)));
   }
 
   const nodes: BrainNode[] = keep.filter((n) => at.has(n.id)).map((n) => {
