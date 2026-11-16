@@ -192,8 +192,8 @@ class HubTest(unittest.TestCase):
         try:
             sent = []
 
-            def post(path, body):
-                sent.append((path, body))
+            def post(path, body, timeout=15):
+                sent.append((path, body, timeout))
                 return 202, {"message": "시작했어요"}
 
             with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
@@ -202,7 +202,8 @@ class HubTest(unittest.TestCase):
                     mock.patch.object(server, "start_reflex") as start, mock.patch.object(server, "plan_reflex") as plan:
                 status, reply = self.call(hub, {"id": node["id"], "plan": {"login": "me"}})
                 self.assertEqual((status, reply["message"]), (202, "devbox1: 시작했어요"))
-                self.assertEqual(sent, [("/reflex", {"node": node, "check": False, "plan": {"login": "me"}})])
+                self.assertEqual(sent, [("/reflex", {"node": node, "check": False, "plan": {"login": "me"}},
+                                         server.REFLEX_FORWARD_SEC)])
                 self.r.ok, self.r.error = False, "연결 끊김"
                 with mock.patch.object(self.r, "post", remote.Remote.post.__get__(self.r)):
                     status, _ = self.call(hub, {"id": node["id"], "check": True})
@@ -229,6 +230,7 @@ class HubTest(unittest.TestCase):
                 status, reply = self.call(hub, {"id": node["id"], "plan": {}})
             self.assertEqual((status, start.call_count), (502, 0))
             self.assertIn("터널 끊김", reply["message"])
+            self.assertIn("시작됐는지 알 수 없어요", reply["message"])  # the far end may still start it
         finally:
             hub.close()
 

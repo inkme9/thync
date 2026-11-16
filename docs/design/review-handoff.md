@@ -36,8 +36,9 @@ TL;DR
 ## 실행 계정
 
 - 실행하는 머신은 `company_roots` 바로 아래 폴더(이름순), 그다음 알려진 세션 폴더 순서로 보고, `origin`이 PR 저장소인 첫 클론을 씁니다. 확인 창에 그 폴더를 보여 줍니다. 클론이 없으면 시작하지 않습니다. 계정을 정할 기준이 없고, `pr-to-merge`는 클론에서 고치기 때문입니다.
-- `mien`이 있으면 클론에서 `mien which`로 프로필을 읽습니다. 프로필이 없으면 시작하지 않습니다. 프로필이 있으면 계정 확인(`gh api user`)과 Claude Code 프로세스 전체를 `mien exec <프로필> -- <명령>`으로 실행하고, 첫 프롬프트에도 그 프로필을 적습니다. 서버 프로세스의 기본 `gh` 계정은 쓰지 않습니다.
+- `mien`이 있으면 클론에서 `mien which`로 프로필을 읽습니다. 서버 프로세스에 활성화된 프로필(`MIEN_PROFILE`)이 클론의 프로필보다 먼저 나오지 않도록, 이 호출에서는 그 변수를 뺍니다. 프로필이 없으면 시작하지 않습니다. 프로필이 있으면 계정 확인(`gh api user`)과 Claude Code 프로세스 전체를 `mien exec <프로필> -- <명령>`으로 실행하고, 첫 프롬프트에도 그 프로필을 적습니다. 서버 프로세스의 기본 `gh` 계정은 쓰지 않습니다.
 - `mien exec`는 인자에서 첫 `--`를 지웁니다. 그래서 프로필 뒤에 `--`를 두어, `claude`의 옵션과 프롬프트를 나누는 `--`가 그대로 남게 합니다.
+- `mien exec`는 에이전트 하네스가 부른 것으로 보이면(`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`) 자식의 출력을 파이프로 받아, 세션이 터미널 없이 돕니다. thync가 Claude Code 셸에서 시작되어 tmux 서버가 그 변수를 물려받았을 수 있으므로, 세션 명령은 `env -u`로 두 변수를 지우고 시작합니다.
 - `mien`이 없는 머신에서는 서버 프로세스의 `gh` 계정이 실행 계정입니다. 확인 창에 "프로필 없음"으로 보여 주고, 작성자 확인은 같은 방식으로 합니다.
 
 ## 확인과 시작
@@ -45,7 +46,7 @@ TL;DR
 1. 화면이 `POST /reflex {id, check: true}`를 보냅니다. 실행하는 머신이 위의 확인을 모두 하고, 통과하면 `plan`(저장소, 번호, 주소, 스킬, 프로필, 계정, 작성자, 클론 경로, tmux 세션 이름)을 돌려줍니다. 이 단계는 아무것도 시작하거나 저장하지 않습니다.
 2. 확인 창은 `plan`과 허용 동작을 보여 줍니다. 취소하면 요청을 더 보내지 않습니다.
 3. 시작을 누르면 화면이 `POST /reflex {id, plan}`을 보냅니다. 실행하는 머신은 확인을 처음부터 다시 하고, 주소·스킬·계정·프로필·클론 경로가 화면이 보여 준 `plan`과 다르면 `409`로 거절합니다.
-4. 통과하면 tmux 세션을 클론 폴더에서 만들고, 그 안에서 Claude Code를 `--permission-mode auto`로 실행합니다. `~/.thync`, `~/.ssh`, `~/.claude/settings.json`은 Read 도구에서 거부합니다. 첫 프롬프트는 `/<스킬> <PR 주소>`와 범위·계정을 적은 지시이고, `pr-to-merge`에는 병합 허락과 `--checkout OWNER/REPO=<클론>`을 덧붙입니다. 신뢰·보증 문구는 넣지 않습니다.
+4. 통과하면 tmux 세션을 클론 폴더에서 만들고, 그 안의 `sh -c`에서 Claude Code를 `--permission-mode auto`로 실행합니다. tmux의 기본 셸이 fish나 csh여도 `$?`가 종료 코드가 되도록 `sh`를 씁니다. `~/.thync`, `~/.ssh`, `~/.claude/settings.json`은 Read 도구에서 거부합니다. 첫 프롬프트는 `/<스킬> <PR 주소>`와 범위·계정을 적은 지시이고, `pr-to-merge`에는 병합 허락과 `--checkout OWNER/REPO=<클론>`을 덧붙입니다. 신뢰·보증 문구는 넣지 않습니다.
 
 세션 이름은 `thync-<소유자>-<저장소>-<번호>-<저장소 이름 해시 6자>`입니다. 영문·숫자·`_`·`-` 밖의 글자를 `-`로 바꾼 뒤에도 PR마다 다른 이름이 되도록 해시를 붙입니다. 같은 PR의 세션 이름은 하나뿐이고 `tmux new-session`이 같은 이름을 거절하므로, 받은 리뷰 여러 줄이나 보낸 리뷰 줄에서 같은 PR을 거듭 맡겨도 세션은 하나만 돕니다. 확인 단계도 그 세션이 있으면 PR 상태를 읽기 전에 `409`와 접속 명령을 돌려줍니다.
 
@@ -59,7 +60,7 @@ TL;DR
 
 ## 다른 서버에서 실행하기
 
-`reflex_host`가 있으면 허브는 확인과 시작 두 요청 모두 PR 노드를 그대로 그 서버에 한 번 넘기고(`X-Thync-Forwarded: 1`), 받은 답을 화면에 전합니다. 프로필, 계정, 클론은 그 서버의 것입니다. 허브가 넘기는 요청의 답 메시지에는 그 서버 이름이 앞에 붙으므로, 접속 명령은 그 서버에서 실행해야 한다는 것을 알 수 있습니다. 허브가 그 서버에 연결되어 있지 않으면 `503`, 넘기는 도중 실패하면 `502`를 돌려주며, 어느 경우에도 자기 머신에서 대신 실행하지 않습니다. 넘겨받은 서버는 다시 넘기지 않으며, 그 서버에도 `reflex_host`가 있으면 `503`으로 거절합니다.
+`reflex_host`가 있으면 허브는 확인과 시작 두 요청 모두 PR 노드를 그대로 그 서버에 한 번 넘기고(`X-Thync-Forwarded: 1`), 받은 답을 화면에 전합니다. 프로필, 계정, 클론은 그 서버의 것입니다. 허브가 넘기는 요청의 답 메시지에는 그 서버 이름이 앞에 붙으므로, 접속 명령은 그 서버에서 실행해야 한다는 것을 알 수 있습니다. 그 서버는 시작 전에 `git`, `mien`, `gh`를 여러 번 부르므로, 허브는 넘긴 요청을 300초까지 기다립니다. 허브가 그 서버에 연결되어 있지 않으면 `503`, 넘기는 도중 실패하면 `502`를 돌려주며, 어느 경우에도 자기 머신에서 대신 실행하지 않습니다. 시작 요청이 `502`로 끝나면 그 서버가 이미 시작했을 수 있으므로, 답 메시지에 맡긴 일 카드를 확인하라고 적습니다. 넘겨받은 서버는 다시 넘기지 않으며, 그 서버에도 `reflex_host`가 있으면 `503`으로 거절합니다.
 
 ## 진행 상태
 
@@ -78,6 +79,7 @@ TL;DR
 - 종료 코드 파일은 `THYNC_HOME/handoff/<세션 이름>.<시작 시각>.exit`입니다. tmux가 실행하는 셸이 Claude Code가 끝날 때 종료 코드를 씁니다. 시작마다 다른 파일이므로, 다시 시작하다 실패해도 이전 실행의 결과가 남습니다. 지우는 동작은 없어 시작할 때마다 몇 바이트짜리 파일이 하나씩 늘어납니다.
 - 대화형 세션은 작업이 끝나도(승인, 병합, 닫힘) 스스로 종료하지 않습니다. 사용자가 세션을 끝낼 때까지 카드는 '대기 중'이고, 같은 PR을 다시 맡기면 `409`와 접속 명령을 돌려줍니다.
 - Claude Code에서 한 번도 연 적 없는 폴더는 세션이 폴더 신뢰 질문에서 멈춥니다. 세션 기록이 생기기 전이라 카드는 '시작함'에 머뭅니다. 접속해서 답합니다.
+- 카드는 이번 실행의 세션 기록만 읽습니다. 같은 PR을 전에 맡긴 세션의 기록은 첫 프롬프트 시각이 기록의 시작 시각보다 1분 넘게 이르므로 쓰지 않습니다.
 - 맡긴 일 기록을 지우는 동작은 없습니다. 카드는 PR마다 하나이고, 다시 맡기면 같은 카드의 기록을 바꿉니다.
 
 ## Stateful changes
@@ -99,12 +101,13 @@ TL;DR
 | 같은 클론에서 다른 PR의 `pr-to-merge` 세션 돌고 있음 | 내 PR 시작 | `409`와 그 세션의 접속 명령. 리뷰 요청은 시작됨 | introduced | H `test_second_pr_to_merge_in_the_same_clone_is_refused` |
 | 세션 끝남 | 같은 PR 다시 시작 | 새 세션, 새 종료 코드 파일 경로, 기록 교체 | changed | H `test_own_pr_starts_pr_to_merge_for_that_pr_only` (기록 저장), `test_failed_restart_keeps_the_previous_runs_outcome` (파일 분리) |
 | 세션 끝남 | 다시 시작, 확인 실패 또는 `tmux new-session` 실패 | 4xx/`500`. 이전 기록과 종료 코드 파일 그대로, 카드는 이전 결과 | introduced | H `test_failed_restart_keeps_the_previous_runs_outcome` |
+| 세션 끝남, 이전 실행의 세션 기록이 남음 | 같은 PR 다시 시작, 새 세션 기록 아직 없음 | 카드는 '시작함'. 이전 기록이 아니라 이번 실행의 기록만 읽음 | introduced | H `RunLabelTest.test_card_reads_the_session_of_this_run_not_an_earlier_one` |
 | 세션 돌고 있음 | Claude Code 종료 | 종료 코드 파일 기록. 카드가 끝남 또는 실패 | introduced | H `test_exit_code_of_the_session_reaches_the_card` |
 | 세션 돌고 있음 | tmux 세션을 직접 닫음, 머신 재부팅 | 종료 코드 파일 없음. 카드는 '끝남 (종료 코드 모름)' | introduced | H `RunLabelTest.test_labels_follow_tmux_session_log_and_exit_code` |
 | `tmux` 키가 없는 기록(thync가 세션 없이 리뷰를 직접 올리던 방식이 남긴 기록) | 화면 갱신 | 카드로 보이지 않음. 파일은 그대로 | introduced | H `RunLabelTest.test_one_shot_review_records_are_not_shown` |
 | 허브 | 확인 또는 시작, `reflex_host` 연결됨 | 같은 노드를 그 서버로 한 번 넘김. 허브에서는 실행·저장 없음 | changed | R `test_hub_sends_a_handoff_on_once_and_never_runs_it_itself` |
 | 허브 | 확인 또는 시작, `reflex_host` 연결 안 됨 | `503`. 허브에서 실행·저장 없음 | unchanged | R `test_hub_sends_a_handoff_on_once_and_never_runs_it_itself` |
-| 허브 | 확인 또는 시작, 넘기는 도중 실패 | `502`와 이유. 허브에서 실행·저장 없음 | unchanged | R `test_handoff_with_the_feature_off_or_a_failed_forward_starts_nothing` |
+| 허브 | 확인 또는 시작, 넘기는 도중 실패(300초 초과 포함) | `502`와 이유, 시작이면 카드를 확인하라는 안내. 허브에서 실행·저장 없음. 그 서버는 이미 시작했을 수 있음 | changed | R `test_handoff_with_the_feature_off_or_a_failed_forward_starts_nothing` |
 | 넘겨받은 서버 | 넘겨받은 확인·시작 요청 | 받은 노드로 확인·시작. 확인은 아무것도 시작하지 않음 | changed | R `test_forwarded_handoff_uses_the_node_it_is_sent` |
 | 넘겨받은 서버 | 넘겨받은 요청, 자신에게도 `reflex_host` 있음 | `503`. 다시 넘기지 않음 | unchanged | R `test_forwarded_handoff_on_a_machine_with_its_own_reflex_host_is_refused` |
 
@@ -122,6 +125,7 @@ TL;DR
 - `pr-to-merge`는 사용자가 쓰는 클론에서 내 PR을 고칩니다. 브랜치를 어떻게 다루는지는 Concord가 정합니다. 커밋하지 않은 변경이 있는 클론에서 어떻게 할지는 세션이 정합니다.
 - 리뷰 요청이 온 저장소의 클론이 없으면 맡길 수 없습니다.
 - `mien`이 없는 머신에서는 `gh api user`를 서버 프로세스의 환경에서 확인하고, 세션은 tmux 서버의 환경에서 돕니다. tmux 서버가 다른 환경으로 먼저 떠 있었다면 확인한 계정과 실행 계정이 다를 수 있습니다.
+- 클론을 찾을 때 `origin`이 PR 저장소와 이름이 다르면 저장소 이름이 바뀌었는지 `gh`로 묻습니다. 이 조회는 서버 프로세스의 기본 `gh` 계정으로 하므로, 그 계정이 볼 수 없는 비공개 저장소의 이름 변경은 찾지 못합니다.
 - 스킬 확인은 플러그인 캐시에 스킬 파일이 있는지만 봅니다. 꺼 둔 플러그인도 통과하고, 그 경우 세션이 스킬을 찾지 못한 채 '대기 중'에 머뭅니다.
 - '대기 중'은 감시 중과 입력 대기를 구분하지 않습니다. 구분하려면 세션 기록에서 백그라운드 명령 상태를 읽어야 하는데, 세션 기록 형식은 공개된 형식이 아닙니다.
 

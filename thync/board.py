@@ -83,13 +83,18 @@ def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list
         c["file"] = str(f["path"]) if f else ""
 
     # Work handed off to Claude: one card per PR.
-    handed = {n["detail"]["reflex"]: n for n in nodes.values() if n["kind"] == "workThread" and n["detail"].get("reflex")}
+    handed: dict[str, list[dict]] = {}
+    for n in nodes.values():
+        if n["kind"] == "workThread" and n["detail"].get("reflex"):
+            handed.setdefault(n["detail"]["reflex"], []).append(n)
     # Hand-offs a remote runs come with their run state; there `tmux attach` needs an ssh first.
     for url, r in {**(load_reflexes() if HANDOFF else {}), **remote.reflexes()}.items():
         if "tmux" not in r:
             continue  # a record of the one-shot reviewer thync no longer has
         pr = nodes.get(f"pr:{url}")
-        session = handed.get(url)
+        # The session of this run, not an earlier hand-off of the same PR (a minute of slack for the first prompt).
+        session = max((n for n in handed.get(url, []) if n["detail"].get("first_at", 0) >= r["started"] - 60),
+                      key=lambda n: n["detail"]["first_at"], default=None)
         attach = f"tmux attach -t {r['tmux']}"
         run = r if "host" in r else run_state(r)
         tags = [r["skill"], run_label(run, session["detail"] if session else None),

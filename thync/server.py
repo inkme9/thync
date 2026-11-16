@@ -31,6 +31,7 @@ from .sources.claude_code import load_sessions, questions_of
 from .store import BOARD_COLUMNS, load_token, save_card, save_name
 
 TOKEN = ""
+REFLEX_FORWARD_SEC = 300  # longer than the far end's own checks can take
 
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -212,7 +213,11 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if REFLEX_HOST and not self.forwarded():
             # Sent on once; if the remote cannot be reached nothing runs here, under this machine's accounts.
-            status, reply = remote.by_name(REFLEX_HOST).post("/reflex", {"node": target, "check": check, "plan": shown})
+            # The far end runs several git, mien and gh calls; a short timeout would report a start that still happens.
+            status, reply = remote.by_name(REFLEX_HOST).post("/reflex", {"node": target, "check": check, "plan": shown},
+                                                             timeout=REFLEX_FORWARD_SEC)
+            if status == 502 and not check:
+                reply = {"message": f"{reply.get('message', '')} · 시작됐는지 알 수 없어요. 맡긴 일 카드를 확인해 주세요"}
             if status < 400 and isinstance(reply.get("plan"), dict):
                 self.send_json(status, {"plan": {**reply["plan"], "host": REFLEX_HOST}})
                 return

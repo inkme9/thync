@@ -117,7 +117,7 @@ class Remote:
         self.token = token
 
     # --- HTTP over the tunnel ---
-    def request(self, path: str, body: dict | None = None, etag: str = "") -> tuple[int, bytes, dict]:
+    def request(self, path: str, body: dict | None = None, etag: str = "", timeout: float = 15) -> tuple[int, bytes, dict]:
         # Marked so the far end never forwards it again (a hub listed as a remote of itself would loop).
         headers = {"X-Thync-Token": self.token, "Accept-Encoding": "gzip", "X-Thync-Forwarded": "1"}
         if etag:
@@ -128,7 +128,7 @@ class Remote:
             headers["Content-Type"] = "application/json"
         req = urllib.request.Request(f"http://127.0.0.1:{self.local_port}{path}", data=data, headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=15) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 status, raw, hdrs = r.status, r.read(), dict(r.headers)
         except urllib.error.HTTPError as e:
             with e:
@@ -185,12 +185,12 @@ class Remote:
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
 
-    def post(self, path: str, body: dict) -> tuple[int, dict]:
+    def post(self, path: str, body: dict, timeout: float = 15) -> tuple[int, dict]:
         """Forward a write to this server's thync. Returns (HTTP status, JSON body or {})."""
         if not self.ok:
             return 503, {"message": f"{self.name} 에 연결되어 있지 않아요 ({self.error})"}
         try:
-            status, raw, _ = self.request(path, body)
+            status, raw, _ = self.request(path, body, timeout=timeout)
         except RemoteError as e:
             return 502, {"message": f"{self.name}: {e}"}
         try:

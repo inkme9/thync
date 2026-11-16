@@ -202,7 +202,7 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
                    kind_label="작업 세션", source=s.source, cwd=s.cwd, branch=s.branch, updated=int(last), working=running,
                    focus_prompts=len(recent_prompts), subagents=subs, claude_working=claude_working,
                    turn_ended=not waiting and not s.claude_turn and subs == 0,
-                   last_at=last_prompt_at, act=model.retention(age), reflex=reflex_url,
+                   last_at=last_prompt_at, first_at=epoch(s.prompts[0][0]), act=model.retention(age), reflex=reflex_url,
                    last_prompt=s.prompts[-1][1][:200], repo=repo, unit=ukey, host=host,
                    waiting=waiting and {**waiting, "answerable": answerable})
 

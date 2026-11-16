@@ -6,6 +6,7 @@ clone. plan_reflex() checks everything and starts nothing; start_reflex() checks
 """
 import hashlib
 import json
+import os
 import re
 import shlex
 import shutil
@@ -23,6 +24,9 @@ WORKFLOW = {"review": "concord:review-until-approve", "sent": "concord:pr-to-mer
 PLUGIN_CACHE = HOME / ".claude" / "plugins" / "cache"
 EXIT_DIR = STATE_DIR / "handoff"
 PR_URL = re.compile(r"https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)")
+# mien pipes a child's output instead of giving it the terminal when these say an agent harness runs it; the session
+# must stay interactive even when thync itself was started from a Claude Code shell.
+HARNESS_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
 # The session edits, commits and pushes (my PR) or runs Concord's scripts (someone else's), so it keeps auto mode;
 # it still may not read secrets.
 PERMISSIONS = ["--permission-mode", "auto", "--disallowedTools", "Read(~/.thync/**)", "Read(~/.ssh/**)",
@@ -109,6 +113,7 @@ def plan_reflex(node: dict) -> tuple[int, dict]:
     owner, repo, number = m.groups()
     slug, url, skill = f"{owner}/{repo}", m.group(0), WORKFLOW[role]
     name = session_name(slug, number)
+    _tmux_cache.pop(name, None)  # a session that ended a moment ago must not answer "still running"
     if tmux_alive(name):  # before anything else, so a running session always answers with where to find it
         return 409, {"message": f"이미 돌고 있어요 (tmux attach -t {name})"}
     missing = [b for b in ("claude", "tmux", "gh") if not shutil.which(b)]
@@ -121,13 +126,16 @@ def plan_reflex(node: dict) -> tuple[int, dict]:
         return 404, {"message": f"이 머신에서 {slug} 저장소 폴더를 찾지 못했어요"}
     if role == "sent":
         # pr-to-merge fixes my PR in the clone; two of them would share one working tree.
-        busy = next((r["tmux"] for u, r in load_reflexes().items() if u != url and r.get("cwd") == clone
+        busy = next((r["tmux"] for u, r in load_reflexes().items()
+                     if u != url and os.path.realpath(r.get("cwd", "")) == os.path.realpath(clone)
                      and r.get("skill") == skill and "tmux" in r and tmux_alive(r["tmux"])), None)
         if busy:
             return 409, {"message": f"{clone} 에서 다른 PR 의 pr-to-merge 가 돌고 있어요 (tmux attach -t {busy})"}
     profile, prefix = "", []
     if shutil.which("mien"):
-        out = subprocess.run(["mien", "which"], cwd=clone, capture_output=True, text=True, timeout=30)
+        # Without MIEN_PROFILE, which mien would report ahead of the clone's own claim.
+        env = {k: v for k, v in os.environ.items() if k != "MIEN_PROFILE"}
+        out = subprocess.run(["mien", "which"], cwd=clone, env=env, capture_output=True, text=True, timeout=30)
         profile = out.stdout.strip().splitlines()[-1] if out.returncode == 0 and out.stdout.strip() else ""
         if not profile:
             return 409, {"message": f"{clone} 를 맡은 mien 프로필이 없어요 (mien claim <프로필>)"}
@@ -182,12 +190,14 @@ def _start(node: dict, shown: dict | None) -> tuple[int, str]:
     # Absolute paths: the tmux server may have been started with another PATH. mien exec drops the first `--`,
     # so its own `--` keeps the one before the prompt for claude.
     prefix = [shutil.which("mien") or "mien", "exec", plan["profile"], "--"] if plan["profile"] else []
-    argv = [*prefix, shutil.which("claude") or "claude", *PERMISSIONS, "--", prompt_of(plan)]
-    command = f"{shlex.join(argv)}; echo $? > {shlex.quote(str(exit_file(record)))}"
+    unset = [a for v in HARNESS_ENV for a in ("-u", v)]
+    argv = ["env", *unset, *prefix, shutil.which("claude") or "claude", *PERMISSIONS, "--", prompt_of(plan)]
+    # sh, not tmux's default-shell: `$?` is the exit status only in a POSIX shell.
+    script = f"{shlex.join(argv)}; echo $? > {shlex.quote(str(exit_file(record)))}"
     EXIT_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     # new-session itself refuses a duplicate name, so there is no check-then-create race.
     try:
-        out = subprocess.run(["tmux", "new-session", "-d", "-s", name, "-c", plan["cwd"], command],
+        out = subprocess.run(["tmux", "new-session", "-d", "-s", name, "-c", plan["cwd"], "sh", "-c", script],
                              capture_output=True, text=True, timeout=10)
     except (subprocess.SubprocessError, OSError) as e:
         return 500, f"tmux 를 실행하지 못했어요 ({e.__class__.__name__})"

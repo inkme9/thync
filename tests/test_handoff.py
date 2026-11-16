@@ -32,10 +32,12 @@ class FakeMachine:
         self.author, self.login, self.profile, self.tmux_rc, self.state = author, login, profile, tmux_rc, state
         self.draft, self.alive = draft, alive
         self.calls: list[list[str]] = []
+        self.envs: dict[str, dict | None] = {}
 
     def __call__(self, argv, **kw):
         argv = [str(a) for a in argv]
         self.calls.append(argv)
+        self.envs[" ".join(argv[:2])] = kw.get("env")
         rc, out, err = 0, "", ""
         if argv[:2] == ["tmux", "new-session"]:
             rc, err = self.tmux_rc, "duplicate session: x" if self.tmux_rc == 1 else "no server" if self.tmux_rc else ""
@@ -52,13 +54,24 @@ class FakeMachine:
         return mock.Mock(returncode=rc, stdout=out, stderr=err)
 
     def launches(self) -> list[str]:
-        """The shell command of every tmux session started."""
-        return [c[-1] for c in self.calls if c[:2] == ["tmux", "new-session"]]
+        """The shell script of every tmux session started (`tmux new-session ... sh -c <script>`)."""
+        return [c[-1] for c in self.calls if c[:2] == ["tmux", "new-session"] and c[-3:-1] == ["sh", "-c"]]
+
+
+ENV = ["env", "-u", "CLAUDECODE", "-u", "CLAUDE_CODE_ENTRYPOINT"]
+
+
+def argv_of(script: str) -> list[str]:
+    """The command before the exit-code write, without the env prefix that keeps the session interactive."""
+    argv = shlex.split(script.split("; echo $?")[0])
+    assert argv[:len(ENV)] == ENV, argv[:6]
+    return argv[len(ENV):]
 
 
 class HandoffTest(unittest.TestCase):
     def setUp(self):
-        self.clone = tempfile.mkdtemp()
+        self.clone = str(Path(tempfile.mkdtemp(), "o", "r"))  # a path that itself ends in OWNER/REPO
+        Path(self.clone).mkdir(parents=True)
         self.cache = Path(tempfile.mkdtemp())
         for skill in ("review-until-approve", "pr-to-merge"):
             path = self.cache / "market" / "concord" / "1.0.0" / "skills" / skill / "SKILL.md"
@@ -84,13 +97,13 @@ class HandoffTest(unittest.TestCase):
         self.assertEqual(status, 202)
         [command] = machine.launches()
         self.assertIn(f"/concord:review-until-approve {A}", command)
-        argv = shlex.split(command.split("; echo $?")[0])
+        argv = argv_of(command)
         # mien exec drops the first `--`; the one left must still sit right before the prompt for claude.
         self.assertEqual(argv[:4], ["/usr/bin/mien", "exec", "cryptolab", "--"])
         self.assertEqual((argv[4], argv[-2]), ("/usr/bin/claude", "--"))
         self.assertNotIn("pr-to-merge", command)
         self.assertNotIn("/pull/8", command)
-        prompt = shlex.split(command.split("; echo $?")[0])[-1]
+        prompt = argv_of(command)[-1]
         self.assertEqual(re.findall(r"trust|vouch|신뢰|믿", prompt, re.I), [])  # the user declares trust, not thync
 
     def test_own_pr_starts_pr_to_merge_for_that_pr_only(self):
@@ -101,7 +114,7 @@ class HandoffTest(unittest.TestCase):
         self.assertIn("/concord:pr-to-merge", command)
         self.assertIn("o/r#7", command)
         self.assertNotIn("review-until-approve", command)
-        self.assertEqual(shlex.split(command)[:3], ["/usr/bin/mien", "exec", "cryptolab"])
+        self.assertEqual(argv_of(command)[:4], ["/usr/bin/mien", "exec", "cryptolab", "--"])
 
     def test_review_request_on_my_own_pr_starts_nothing(self):
         machine = FakeMachine(author="me")
@@ -119,13 +132,22 @@ class HandoffTest(unittest.TestCase):
         machine = FakeMachine(author="me")
         self.run_handoff(pr_node("sent"), machine)
         [command] = machine.launches()
-        prompt = shlex.split(command.split("; echo $?")[0])[-1]
+        prompt = argv_of(command)[-1]
         self.assertTrue(prompt.startswith(f"/concord:pr-to-merge {A} "))
         self.assertIn("Merging is authorized for o/r#7 only", prompt)
-        self.assertEqual(re.findall(r"\bo/r(?![#=/])", prompt), [])  # never the whole repository
+        # Never the whole repository; the clone path is a path, not a target.
+        self.assertEqual(re.findall(r"\bo/r(?!#7\b|/pull/7\b|=)", prompt.replace(self.clone, "<clone>")), [])
         self.assertIn(f"--checkout o/r={self.clone}", prompt)
         self.assertEqual(self.saved[A]["skill"], "concord:pr-to-merge")
         self.assertEqual((self.saved[A]["profile"], self.saved[A]["login"]), ("cryptolab", "me"))
+
+    def test_profile_comes_from_the_clone_not_the_servers_active_profile(self):
+        machine = FakeMachine(author="alice")
+        with mock.patch.dict(os.environ, {"MIEN_PROFILE": "someone-else"}):
+            self.run_handoff(pr_node("review"), machine, call=reflex.plan_reflex)
+        env = machine.envs["mien which"]
+        self.assertIsNotNone(env)
+        self.assertNotIn("MIEN_PROFILE", env)
 
     def test_check_shows_the_plan_and_starts_nothing(self):
         machine = FakeMachine(author="alice")
@@ -232,6 +254,21 @@ class RunLabelTest(unittest.TestCase):
         self.assertEqual(board.run_label(alive, {"claude_working": False}), "대기 중 · 백그라운드 감시 중이거나 입력을 기다림")
         self.assertEqual(board.run_label({"alive": False, "exit": 0}, None), "끝남")
         self.assertEqual(board.run_label({"alive": False, "exit": None}, None), "끝남 (종료 코드 모름)")
+
+    def test_card_reads_the_session_of_this_run_not_an_earlier_one(self):
+        record = {A: {"tmux": "t", "skill": "concord:pr-to-merge", "started": 1000}}
+        old = {"id": "session:old", "kind": "workThread", "roles": [], "detail": {
+            "reflex": A, "first_at": 500, "claude_working": False}}
+        nodes = {old["id"]: old}
+        with mock.patch.object(board, "load_reflexes", return_value=record), mock.patch.object(board, "HANDOFF", True), \
+                mock.patch.object(board, "run_state", return_value={"alive": True, "exit": None}):
+            [card] = board.build_board({}, nodes, {}, {})
+            self.assertIn("시작함", card["tags"])  # the earlier run's idle log does not count
+            new = {"id": "session:new", "kind": "workThread", "roles": [], "detail": {
+                "reflex": A, "first_at": 1003, "claude_working": True}}
+            [card] = board.build_board({}, {**nodes, new["id"]: new}, {}, {})
+        self.assertIn("작업 중", card["tags"])
+        self.assertEqual(card["focus"], "session:new")
 
     def test_one_shot_review_records_are_not_shown(self):
         old = {A: {"kind": "review", "skill": "thync 리뷰", "status": "running", "started": 1}}

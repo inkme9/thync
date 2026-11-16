@@ -47,16 +47,16 @@ export function openReflex(id: string): void {
   const targets = reflexTargets(id);
   state.signature = ""; // put a dragged node back in its place
   apply();
-  if (!state.data.handoff) return; // no claude CLI or session logs on the server
-  if (!targets.length) {
-    claimModal("맡길 PR 이 없어요");
+  if (!state.data.handoff || !targets.length) {
+    claimModal(state.data.handoff ? "맡길 PR 이 없어요" : "PR 을 맡길 수 없어요");
     const close = button("닫기");
     close.onclick = closeDetail;
     const row = Object.assign(document.createElement("div"), { className: "actions" });
     row.append(close);
-    detailBox.replaceChildren(
-      p("'맡긴 일'은 리뷰 요청(남의 PR)이나 내 PR 을 Concord 작업으로 Claude 에게 맡기는 칸이에요."),
-      p("이 작업에는 리뷰를 기다리는 내 PR 이나 나에게 온 리뷰 요청이 없어요."), row);
+    detailBox.replaceChildren(...(state.data.handoff
+      ? [p("'맡긴 일'은 리뷰 요청(남의 PR)이나 내 PR 을 Concord 작업으로 Claude 에게 맡기는 칸이에요."),
+        p("이 작업에는 리뷰를 기다리는 내 PR 이나 나에게 온 리뷰 요청이 없어요.")]
+      : [p("이 서버에는 claude CLI 가 없거나 sources 에 claude_code 가 없어 PR 을 맡길 수 없어요.")]), row);
     return;
   }
   claimModal("");
@@ -81,7 +81,7 @@ export function openReflex(id: string): void {
     body.replaceChildren(p("실행할 머신에서 저장소 폴더, 계정, PR 작성자를 확인하고 있어요…"));
     const res = await post("/reflex", { id: n.id, check: true }).catch(() => null);
     const reply = res ? await res.json().catch(() => ({})) : {};
-    if (mine !== asked) return; // another PR was picked meanwhile
+    if (mine !== asked || !detailBox.contains(body)) return; // another PR was picked, or this dialog was closed
     if (!res?.ok || !reply.plan) {
       body.replaceChildren(p(String(reply.message ?? `확인하지 못했어요 (${res?.status ?? "연결 안 됨"})`)), p("시작하지 않았어요."));
       return;
@@ -99,14 +99,14 @@ export function openReflex(id: string): void {
   pick.onchange = () => { void check(); };
   detailBox.replaceChildren(...(targets.length > 1 ? [pick] : []), body, row);
   void check();
-  cancel.onclick = () => { asked++; closeDetail(); };
+  cancel.onclick = closeDetail;
   ok.onclick = async () => {
     if (!plan) return;
     ok.disabled = true;
     const n = selected();
     const res = await post("/reflex", { id: n.id, plan });
     const { message } = await res.json().catch(() => ({ message: `실패 (${res.status})` }));
-    detailBox.replaceChildren(p(message));
+    if (detailBox.contains(row)) detailBox.replaceChildren(p(message)); // only into this dialog, if still open
     if (res.ok) renderer.burst(n.id, ROLE_COLOR.running, 1500);
   };
 }

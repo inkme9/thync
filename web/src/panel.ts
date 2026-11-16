@@ -28,6 +28,7 @@ export function infoButton(id: string): HTMLButtonElement {
 
 /** The drag type a review-list row carries, so the board's own card drops ignore it. */
 export const NODE_DRAG = "application/x-thync-node";
+let dragging = false; // the 2 s refresh would replace the row being dragged
 
 function item(n: ApiNode, main: string, sub: string, role: string, handoff = false): HTMLLIElement {
   const li = Object.assign(document.createElement("li"), { className: role });
@@ -41,18 +42,24 @@ function item(n: ApiNode, main: string, sub: string, role: string, handoff = fal
     btn.ondblclick = (e) => e.stopPropagation();
     li.append(btn);
     li.draggable = true;
-    li.ondragstart = (e) => { e.dataTransfer!.setData(NODE_DRAG, n.id); e.dataTransfer!.effectAllowed = "link"; };
+    li.ondragstart = (e) => { dragging = true; e.dataTransfer!.setData(NODE_DRAG, n.id); e.dataTransfer!.effectAllowed = "link"; };
+    li.ondragend = () => { dragging = false; };
   }
+  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${main}|${b.textContent}`; });
   return li;
 }
 
 function list(ul: HTMLUListElement, items: HTMLLIElement[], empty: string): void {
+  // Keep keyboard focus on the same button across the 2 s refresh (keys are set in item()).
+  const had = ul.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.key : undefined;
   ul.replaceChildren(...(items.length ? items : [Object.assign(document.createElement("li"), { className: "empty", textContent: empty })]));
+  if (had) [...ul.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.dataset.key === had)?.focus();
 }
 
 const STATE_ORDER: Record<string, number> = { "수정 요청": 0, "승인됨": 1, "코멘트 있음": 2, "리뷰 대기": 3 };
 
 export function renderPanel(): void {
+  if (dragging) return;
   const visible = shown();
   const sources = visible.filter(isSource);
   // A session on another machine names it first.
