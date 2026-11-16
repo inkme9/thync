@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { toGraph } from "../src/layout.ts";
+import { EDGE, inBrain, insideBrain, outlineRatio, toGraph } from "../src/layout.ts";
 import { state } from "../src/state.ts";
 import type { ApiNode } from "../src/types.ts";
 
@@ -44,12 +44,24 @@ test("hundreds of units in one tier all stay inside the brain", () => {
   Object.assign(state, { showAll: false, showLinked: false, profile: "전체" });
   const g = toGraph();
   assert.equal(g.nodes.length, 600);
-  for (const n of g.nodes) {
-    const p = n._3dLobe!;
-    const e = Math.hypot(p.x / 0.95, p.y / (p.y < 0 ? 0.69 : 0.92), p.z / 1.25);
-    assert.ok(e <= 0.97 + 1e-9, `${n.id} at ${e.toFixed(2)}`);
+  for (const n of g.nodes) assert.ok(inBrain(n._3dLobe!), n.id);
+  const onEdge = g.nodes.filter((n) => Math.abs(outlineRatio(n._3dLobe!, { c: { x: 0, y: 0, z: 0 }, x: 0.95, up: 0.92, down: 0.69, z: 1.25 }) - EDGE) < 1e-6);
+  assert.ok(onEdge.length < 60, `${onEdge.length} nodes pressed onto the edge`);
+  const spots = new Set(g.nodes.map((n) => ["x", "y", "z"].map((k) => n._3dLobe![k as "x"].toFixed(2)).join()));
+  assert.ok(spots.size > 500, `only ${spots.size} distinct places`);
+});
+
+test("my PRs waiting on review stay in the cerebellum, and the brain's first spots do not move", () => {
+  const sent = (i: number): ApiNode => ({ ...node(`pr:${i}`, `s${i}`, "source"), roles: ["sent"] });
+  const units = [...Array.from({ length: 6 }, (_, i) => unit(`s${i}`)), unit("f")];
+  state.data = { ...state.data, units, nodes: [...Array.from({ length: 6 }, (_, i) => sent(i)),
+    { ...node("f", "f"), roles: ["focus"], detail: { unit: "f", live: true, last_at: 1 } }], edges: [] };
+  const g = toGraph();
+  for (let i = 0; i < 6; i += 1) {
+    const n = g.idx[`pr:${i}`];
+    assert.equal(n._lobeName, "cerebellum", `pr:${i}`);
+    assert.ok(inBrain(n._3dLobe!));
   }
-  // units still get distinct places, not one pile on the edge
-  const spots = new Set(g.nodes.map((n) => `${n._3dLobe!.x.toFixed(1)},${n._3dLobe!.y.toFixed(1)},${n._3dLobe!.z.toFixed(1)}`));
-  assert.ok(spots.size > 150, `only ${spots.size} distinct places`);
+  assert.deepEqual(insideBrain({ x: 0, y: 0.28, z: 0.82 }), { x: 0, y: 0.28, z: 0.82 });  // tier 0
+  assert.deepEqual(insideBrain({ x: 0, y: -0.52, z: -0.8 }), { x: 0, y: -0.52, z: -0.8 }); // tier 4, lower cerebellum
 });
