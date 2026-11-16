@@ -73,6 +73,12 @@ tailscale serve --bg 8765
 
 출력된 `https://<기기 이름>.<tailnet 이름>.ts.net/` 주소를 열고, 처음 한 번 화면 위쪽 입력 칸에 토큰을 넣습니다. 끄려면 `tailscale serve --https=443 off`를 실행합니다.
 
+혼자 쓰는 컴퓨터라면 `config.json`의 `tailscale_users`에 내 Tailscale 로그인 이름을 넣어 토큰 입력 없이 열 수 있습니다. `tailscale serve`가 요청마다 접속한 사람의 로그인 이름을 붙여 주고, thync는 목록에 있는 이름이면 토큰 없이 허용합니다. 바꾼 뒤에는 thync를 다시 시작합니다.
+
+```json
+{"tailscale_users": ["me@example.com"]}
+```
+
 `tailscale funnel`은 서버를 인터넷 전체에 공개하므로 쓰지 않습니다.
 
 ## 실행이 잘되지 않을 때

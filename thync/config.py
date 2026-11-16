@@ -51,6 +51,9 @@ NOTION_USER = CONFIG.get("notion_user_id", "")  # only pages last edited by this
 HANDOFF = bool(REFLEX_HOST) or ("claude_code" in SOURCES and shutil.which("claude") is not None)
 # How long the AskUserQuestion hook holds a question for an answer from thync before the session asks itself.
 ASK_WAIT_SEC = int(CONFIG.get("ask_wait_sec", 300))
+# Tailscale login names that may use the page without the access token when it comes through `tailscale serve`,
+# which sets Tailscale-User-Login and removes one a client sent. A local process can still forge the header.
+TAILSCALE_USERS = {str(u).strip().casefold() for u in CONFIG.get("tailscale_users", []) if str(u).strip()}
 HOST = "127.0.0.1"
 PORT = int(CONFIG.get("port", 8765))
 
