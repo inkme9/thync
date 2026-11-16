@@ -41,7 +41,7 @@ LANE = re.compile(r"^##[ \t]+(.*\S)[ \t]*$")
 ITEM = re.compile(r"^- (?:\[(.)\][ \t]+)?(.*\S)[ \t]*$")       # "- [ ] text", "- [x] text" or "- text", not indented
 BOLD_LINE = re.compile(r"\*\*[^*\n]+\*\*")                      # the plugin's mark of a lane that completes its cards
 BLOCK_ID = re.compile(r"[ \t]\^[\w-]+$")
-WIKILINK = re.compile(r"\[\[(?:[^\]|\n]*\|)?([^\]|\n]+)\]\]")
+WIKILINK = re.compile(r"\[\[(?:[^\[\]|\n]*\|)?([^\[\]|\n]+)\]\]")  # no [ inside: a run of [[ stays linear
 WORD = re.compile(r"[^\W_]+")
 DONE_WORDS = {"완료", "완료됨", "종료", "done", "complete", "completed", "closed"}
 DOING_WORDS = {"진행", "진행중", "대기", "막힘", "확인", "검수", "doing", "progress", "blocked", "waiting", "review"}
@@ -180,8 +180,9 @@ def board_column(lane: str, complete: bool, checked: bool) -> str:
 
 # Marks around text, not a line of marks. A double mark (**bold**, ~~struck~~) is markup wherever it stands. A
 # single * or == is markup only when it stands apart from the words around it: 2*3*4 and a==b==c are not emphasis.
-STRONG = re.compile(r"(\*\*|~~)(?=[^\s*~])(.+?)(?<=[^\s*~])\1")
-SOFT = re.compile(r"(?<![\w*=])(\*|==)(?=[^\s*=])(.+?)(?<=[^\s*=])\1(?![\w*=])")
+# The span is bounded, so a long line of unclosed marks costs a bounded scan per mark, not a scan to its end.
+STRONG = re.compile(r"(\*\*|~~)(?=[^\s*~])(.{1,300}?)(?<=[^\s*~])\1")
+SOFT = re.compile(r"(?<![\w*=])(\*|==)(?=[^\s*=])(.{1,300}?)(?<=[^\s*=])\1(?![\w*=])")
 
 
 def _plain(text: str) -> str:
@@ -228,7 +229,7 @@ def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
         column = board_column(it["lane"]["name"], it["lane"]["complete"], it["checked"])
         name = " ".join(_plain(title).split())
         cards.append({"id": BOARD_CARD + digest + (f"-{seen[digest]}" if seen[digest] > 1 else ""),
-                      "title": name[:200] if re.search(r"\w", name) else "(제목 없음)",  # only marks left: no title
+                      "title": name[:200] if WORD.search(name) else "(제목 없음)",  # no letter or digit left: no title
                       "note": "\n".join(_plain(x) for x in ([lead] if lead else []) + rest)[:4000],
                       "sub": "", "column": column, "auto_column": column, "moved": False, "profile": profile,
                       "updated": updated, "focus": "", "file": path, "url": url, "readonly": True,

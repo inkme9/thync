@@ -148,9 +148,17 @@ class Format(unittest.TestCase):
         head = "---\nkanban-plugin: board\n---\n\n## Ideas\n\n"
         (card,) = cards_of(head + "- [ ] *기울임* ~~지움~~ ==강조== ![[그림.png]] 2*3\n  **굵게** [[노트]]\n")
         self.assertEqual((card["title"], card["note"]), ("기울임 지움 강조 그림.png 2*3", "굵게 노트"))
-        for marks in ("** **", "****", "[[]]", "~~ ~~"):
+        for marks in ("** **", "****", "[[]]", "~~ ~~", "_", "**_**", "__"):
             (blank,) = cards_of(head + f"- [ ] {marks}\n")
             self.assertEqual(blank["title"], "(제목 없음)", marks)
+
+    def test_a_long_line_of_unclosed_marks_stays_fast(self):
+        head = "---\nkanban-plugin: board\n---\n\n## Ideas\n\n"
+        for piece in ("*a ", "**a ", "[[", "==a ", "~~a ", "[[a|"):
+            start = time.time()
+            (card,) = cards_of(head + "- [ ] " + piece * (200_000 // len(piece)) + "\n")
+            self.assertLess(time.time() - start, 2.0, piece)   # the unbounded patterns needed minutes
+            self.assertEqual(len(card["title"]), 200)
 
     def test_operators_are_not_taken_for_markup(self):
         head = "---\nkanban-plugin: board\n---\n\n## Ideas\n\n"
