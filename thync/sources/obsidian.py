@@ -1,8 +1,11 @@
-"""Notes edited recently in Obsidian vaults, read straight from the vault folders (docs/design/obsidian-source.md).
+"""Notes edited recently in Obsidian vaults, read straight from the vault folders (docs/design/obsidian-source.md),
+and the cards of one Obsidian Kanban board (docs/design/obsidian-board.md).
 
 A note is a Markdown file whose modification time is recent. Its title is the file name; from the body only the
-note links, tags, Jira keys and GitHub PR urls are kept, never the text. thync only reads from a vault.
+note links, tags, Jira keys and GitHub PR urls are kept, never the text. The Kanban board is the exception: its
+cards are text meant to be shown, so their text is kept. thync only reads from a vault.
 """
+import hashlib
 import os
 import re
 import stat
@@ -13,7 +16,8 @@ import unicodedata
 import urllib.parse
 from pathlib import Path
 
-from ..config import CARDS_DIR, MAX_DAYS, OBSIDIAN_VAULTS
+from ..config import CARDS_DIR, MAX_DAYS, OBSIDIAN_BOARD, OBSIDIAN_VAULTS
+from ..util import BOARD_CARD, FRONT_MATTER, is_kanban
 from .jira import TITLE_KEY
 
 MAX_NOTES = 100           # newest notes kept, across all vaults
@@ -32,7 +36,19 @@ TAG = re.compile(r"(?:^|(?<=\s))#([\w/-]+)", re.M)  # at the start of a line or 
 # ASCII letters and digits only at the edges: a Korean particle or markup may touch the url (…/pull/5와, _…/pull/5_).
 PULL = re.compile(r"(?<![A-Za-z0-9])https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?![A-Za-z0-9])")
 
+MAX_BOARD_CARDS = 200     # cards read from the Kanban board
+MAX_LANE = 100            # characters of a lane name, which every card of the lane carries as a tag
+LANE = re.compile(r"^##[ \t]+(.*\S)[ \t]*$")
+ITEM = re.compile(r"^- (?:\[(.)\][ \t]+)?(.*\S)[ \t]*$")       # "- [ ] text", "- [x] text" or "- text", not indented
+BOLD_LINE = re.compile(r"\*\*[^*\n]+\*\*")                      # the plugin's mark of a lane that completes its cards
+BLOCK_ID = re.compile(r"[ \t]\^[\w-]+$")
+WIKILINK = re.compile(r"\[\[(?:[^\[\]|\n]*\|)?([^\[\]|\n]+)\]\]")  # no [ inside: a run of [[ stays linear
+WORD = re.compile(r"[^\W_]+")
+DONE_WORDS = {"완료", "완료됨", "종료", "done", "complete", "completed", "closed"}
+DOING_WORDS = {"진행", "진행중", "대기", "막힘", "확인", "검수", "doing", "progress", "blocked", "waiting", "review"}
+
 _notes: tuple[float, list] = (0.0, [])
+_board: tuple[tuple | None, list] = (None, [])  # (what lstat said of the board file, its cards)
 _threaded = False  # a refresh thread owns the scanning; callers then only read its last result
 _lock = threading.Lock()
 
@@ -71,8 +87,9 @@ def extract(text: str) -> dict:
             "prs": _unique((f"https://github.com/{o}/{r}/pull/{n}", r, int(n)) for o, r, n in PULL.findall(body))[:PER_NOTE]}
 
 
-def _recent_files(vault: dict, since: float, cards: str) -> list[tuple[float, dict, str]]:
-    """(mtime, vault, path) of the vault's Markdown files changed after `since`. Symlinks are never followed."""
+def _recent_files(vault: dict, since: float, cards: str, skip: tuple | None = None) -> list[tuple[float, dict, str]]:
+    """(mtime, vault, path) of the vault's Markdown files changed after `since`. Symlinks are never followed.
+    `skip` is the (device, inode) of a file to leave out: the Kanban board, which is no note."""
     found = []
     for folder, subfolders, files in os.walk(vault["path"], followlinks=False):
         subfolders[:] = [d for d in subfolders if not d.startswith(".") and not os.path.islink(os.path.join(folder, d))
@@ -85,7 +102,7 @@ def _recent_files(vault: dict, since: float, cards: str) -> list[tuple[float, di
                 st = os.lstat(path)
             except OSError:
                 continue
-            if stat.S_ISREG(st.st_mode) and st.st_mtime > since:
+            if stat.S_ISREG(st.st_mode) and st.st_mtime > since and (st.st_dev, st.st_ino) != skip:
                 found.append((st.st_mtime, vault, path))
     return found
 
@@ -93,10 +110,19 @@ def _recent_files(vault: dict, since: float, cards: str) -> list[tuple[float, di
 def scan(now: float) -> list[dict]:
     """The newest MAX_NOTES notes of all vaults, in vault order and then by path."""
     cards = os.path.realpath(CARDS_DIR)
+    skip = None
+    if OBSIDIAN_BOARD:
+        try:
+            # Device and inode, not the path: a vault reached through a symlink, or a Korean file name stored
+            # decomposed, still names the same file.
+            st = os.lstat(OBSIDIAN_BOARD["path"])
+            skip = (st.st_dev, st.st_ino)
+        except OSError:
+            pass
     files = []
     for vault in OBSIDIAN_VAULTS:
         if os.path.isdir(vault["path"]) and os.path.realpath(vault["path"]) != cards:
-            files += _recent_files(vault, now - MAX_DAYS * 86400, cards)
+            files += _recent_files(vault, now - MAX_DAYS * 86400, cards, skip)
     notes = []
     for at, vault, path in sorted(files, key=lambda f: f[0], reverse=True)[:MAX_NOTES]:
         try:
@@ -148,6 +174,121 @@ def refresh_forever() -> None:
         except Exception as e:  # noqa: BLE001 — the thread must keep running; the next pass tries again
             print(f"thync: Obsidian scan failed ({type(e).__name__})", file=sys.stderr, flush=True)
         time.sleep(SCAN_SEC)
+
+
+# --- The Kanban board ---
+
+def board_column(lane: str, complete: bool, checked: bool) -> str:
+    """The thync column of a card: done when it is checked or its lane completes cards, else by the words of the
+    lane's name. Whole words only, so 미완료 and Incomplete are not done."""
+    words = set(WORD.findall(lane.lower()))
+    if checked or complete or words & DONE_WORDS:
+        return "done"
+    return "doing" if words & DOING_WORDS else "todo"
+
+
+# Marks around text, not a line of marks. A double mark (**bold**, ~~struck~~) is markup wherever it stands. A
+# single * or == is markup only when it stands apart from the words around it: 2*3*4 and a==b==c are not emphasis.
+# The span is bounded, so a long line of unclosed marks costs a bounded scan per mark, not a scan to its end.
+STRONG = re.compile(r"(\*\*|~~)(?=[^\s*~])(.{1,300}?)(?<=[^\s*~])\1")
+SOFT = re.compile(r"(?<![\w*=])(\*|==)(?=[^\s*=])(.{1,300}?)(?<=[^\s*=])\1(?![\w*=])")
+
+
+def _plain(text: str) -> str:
+    """Card text without its markup: links and embeds as their names, emphasis without its marks."""
+    text = WIKILINK.sub(r"\1", text.replace("![[", "[["))
+    for _ in range(2):  # **bold *and italic***
+        text = SOFT.sub(r"\2", STRONG.sub(r"\2", text))
+    return text
+
+
+def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
+    """The cards of a Kanban board file, in board order. Not a board (no kanban-plugin key): no cards."""
+    text = text.lstrip("\ufeff").replace("\r\n", "\n")  # the same text is_kanban() judges
+    front = FRONT_MATTER.match(text)
+    if not front or not is_kanban(text):
+        return []
+    items: list[dict] = []
+    lane = item = None
+    for line in text[front.end():].split("\n"):
+        if line.startswith("%% kanban:settings") or line.rstrip() == "***":  # the settings block; the archive (column 0)
+            break
+        heading, entry = LANE.match(line), ITEM.match(line)
+        if heading:
+            lane, item = {"name": heading.group(1)[:MAX_LANE], "complete": False, "cards": 0}, None
+        elif lane and entry and re.fullmatch(r"\[.\]", entry.group(2)):
+            item = None  # a checkbox with no text is no card
+        elif lane and entry:
+            item = {"lane": lane, "checked": (entry.group(1) or "") in "xX" and bool(entry.group(1)), "lines": [entry.group(2)]}
+            lane["cards"] += 1
+            items.append(item)
+        elif item and line[:1] in " \t" and line.strip():
+            item["lines"].append(line.strip())  # a card of several lines
+        elif lane and not lane["cards"] and BOLD_LINE.fullmatch(line.strip()):
+            lane["complete"] = True
+    url = "obsidian://open?path=" + urllib.parse.quote(path, safe="")
+    cards, seen = [], {}
+    for it in items[:MAX_BOARD_CARDS]:
+        # The plugin puts a card's block id at the end of its text: the last line of a card of several lines.
+        lines = [BLOCK_ID.sub("", line) if i in (0, len(it["lines"]) - 1) else line for i, line in enumerate(it["lines"])]
+        first, rest = lines[0], lines[1:]
+        # The id comes from the text alone, so checking a card or moving it to another lane keeps it.
+        digest = hashlib.sha1(" ".join(" ".join([first, *rest]).split()).encode()).hexdigest()[:12]
+        seen[digest] = seen.get(digest, 0) + 1
+        bold = re.match(r"\*\*(.+?)\*\*[ \t]*(.*)$", first)
+        title, lead = (bold.group(1), bold.group(2).lstrip("—–-:· \t")) if bold else (first, "")
+        column = board_column(it["lane"]["name"], it["lane"]["complete"], it["checked"])
+        name = " ".join(_plain(title).split())
+        cards.append({"id": BOARD_CARD + digest + (f"-{seen[digest]}" if seen[digest] > 1 else ""),
+                      "title": name[:200] if WORD.search(name) else "(제목 없음)",  # no letter or digit left: no title
+                      "note": "\n".join(_plain(x) for x in ([lead] if lead else []) + rest)[:4000],
+                      "sub": "", "column": column, "auto_column": column, "moved": False, "profile": profile,
+                      "updated": updated, "focus": "", "file": path, "url": url, "readonly": True,
+                      "tags": [it["lane"]["name"], "Obsidian"]})
+    return cards
+
+
+def _read_board(board: dict, st: os.stat_result) -> list[dict] | None:
+    """The board's cards; [] when the file is no board; None when it could not be read (try again next time)."""
+    try:
+        # O_NOFOLLOW and O_NONBLOCK: between the lstat and here the file may have become a symlink or a FIFO.
+        fd = os.open(board["path"], os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+    except OSError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):  # or a folder, which opens but cannot be read
+            os.close(fd)
+            return None
+        with os.fdopen(fd, "rb") as f:
+            data = f.read(READ_BYTES + 1)
+    except OSError:
+        return None
+    if len(data) > READ_BYTES:
+        data = data[:data.rfind(b"\n", 0, READ_BYTES) + 1]  # whole lines only
+    try:
+        return parse_board(data.decode("utf-8"), board["profile"], board["path"], int(st.st_mtime))
+    except UnicodeDecodeError:
+        return []
+
+
+def board_cards() -> list[dict]:
+    """The cards of the configured Kanban board. The file is read again only when lstat says it changed."""
+    global _board
+    if not OBSIDIAN_BOARD:
+        return []
+    try:
+        st = os.lstat(OBSIDIAN_BOARD["path"])
+    except OSError:
+        return []
+    if not stat.S_ISREG(st.st_mode):  # a symlink, a folder, a FIFO
+        return []
+    key = (st.st_mtime_ns, st.st_ctime_ns, st.st_size, st.st_ino, st.st_dev)
+    if _board[0] != key:
+        cards = _read_board(OBSIDIAN_BOARD, st)
+        if cards is None:  # a failed read is not kept: the same file may be readable a moment later
+            return []
+        _board = (key, cards)  # "not a board" is kept too, so it is not read every time
+    return [{**c, "tags": list(c["tags"])} for c in _board[1]]  # copies: the kept cards are shared between requests
 
 
 def start() -> None:

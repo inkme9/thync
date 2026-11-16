@@ -5,6 +5,7 @@
   "jira_email": "me@example.com",
   "notion_user_id": "",
   "obsidian_vaults": [],
+  "obsidian_board": "",
   "cards_dir": "~/.thync/cards",
   "port": 8765,
   "reflex_skills": {"sent": "pr-review-watch"}

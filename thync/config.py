@@ -87,8 +87,34 @@ def parse_vaults(raw) -> list[dict]:
     return vaults
 
 
+def parse_board(raw) -> dict | None:
+    """`obsidian_board` -> {path, profile}: the one Obsidian Kanban board whose cards the kanban shows, read-only.
+    A path, or {"path": ..., "profile": "회사"}."""
+    v = {"path": raw} if isinstance(raw, str) else raw
+    if not isinstance(v, dict) or not isinstance(v.get("path"), str) or not v["path"]:
+        if raw:
+            print("thync: obsidian_board ignored: give a path, or {\"path\": ..., \"profile\": ...}", file=sys.stderr, flush=True)
+        return None
+    try:
+        path = str(Path(v["path"]).expanduser())
+    except RuntimeError:  # ~someone with no such user
+        path = v["path"]
+    if not os.path.isabs(path):
+        print(f"thync: obsidian_board {v['path']} ignored: write an absolute path or one under ~", file=sys.stderr, flush=True)
+        return None
+    try:
+        if "\0" in path:
+            raise ValueError
+        path.encode("utf-8")
+    except (ValueError, UnicodeEncodeError):  # lstat would raise on every request, or the card could not go out as JSON
+        print("thync: obsidian_board ignored: the path has a NUL or a character that is not UTF-8", file=sys.stderr, flush=True)
+        return None
+    return {"path": path, "profile": PROFILE_WORK if v.get("profile") == PROFILE_WORK else PROFILE_PERSONAL}
+
+
 # Obsidian vaults whose recently edited notes join the graph: [{"path": "~/vault", "profile": "회사", "name": "work"}].
 OBSIDIAN_VAULTS = parse_vaults(CONFIG.get("obsidian_vaults", []))
+OBSIDIAN_BOARD = parse_board(CONFIG.get("obsidian_board"))
 
 # --- Time windows (seconds) ---
 # Commits, ticket changes and page edits come hours apart, not minutes like prompts, so without session

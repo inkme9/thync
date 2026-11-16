@@ -7,11 +7,12 @@ import hashlib
 import os
 import re
 import secrets
+import sys
 import threading
 from pathlib import Path
 
 from .config import CARDS_DIR, STATE_DIR
-from .util import read_json, write_json, write_text
+from .util import is_kanban, read_json, write_json, write_text
 
 TOKEN_FILE = STATE_DIR / "token"
 NAMES_FILE = STATE_DIR / "names.json"
@@ -85,13 +86,33 @@ def parse_card(text: str) -> tuple[dict, str]:
     return meta, text
 
 
+_skipped: set[Path] = set()  # files in the card folder that are not card files, so each is reported once
+
+
+def _card_text(path: Path) -> tuple[str | None, str]:
+    """(text, '') of a card file, or (None, why) when the file is not one and must not be written over.
+    A board of the Obsidian Kanban plugin: read as a card it would show every card's text as one note, and
+    saving that card would rewrite the board's front matter. A file that is not UTF-8: thync cannot tell what
+    it holds. A file that is missing or unreadable is (None, '')."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return None, "not UTF-8"
+    except OSError:
+        return None, ""
+    return (None, "an Obsidian Kanban board") if is_kanban(text) else (text, "")
+
+
 def read_cards() -> dict[str, dict]:
     cards = {}
     for path in sorted(CARDS_DIR.glob("*.md")):
-        try:
-            meta, note = parse_card(path.read_text(encoding="utf-8"))
-        except OSError:
+        text, why = _card_text(path)
+        if why and path not in _skipped:  # once per file for as long as the server runs
+            _skipped.add(path)
+            print(f"thync: {path} is {why}, not a card file; skipped", file=sys.stderr, flush=True)
+        if text is None:
             continue
+        meta, note = parse_card(text)
         cid = meta.get("id") or f"manual:{path.stem}"
         cards[cid] = {"path": path, "meta": meta, "note": note.strip()}
     return cards
@@ -124,6 +145,10 @@ def _save_card(cid: str, change: dict) -> None:
     if "note" in change:
         note = change["note"]
     path = card["path"]
+    # read_cards() skips these files, so a card id whose file name is one of them would otherwise land on it.
+    why = _card_text(path)[1]
+    if why:
+        raise ValueError(f"{path} is {why}")
     if not note and set(meta) <= {"id"}:
         path.unlink(missing_ok=True)
         return

@@ -1,7 +1,11 @@
 import unittest
+import os
+import tempfile
 from unittest import mock
 
-from thync import hook
+os.environ["THYNC_HOME"] = tempfile.mkdtemp()  # even when the shell sets it: tests delete card files
+
+from thync import hook  # noqa: E402
 
 
 def graph(n_prs: int) -> dict:

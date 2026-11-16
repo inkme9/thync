@@ -78,8 +78,8 @@ Obsidian 노트 본문의 Jira 키는 작업 단위를 정하지 않고 티켓�
 | --- | --- |
 | `__main__.py` | `python3 -m thync` 진입점 |
 | `config.py` | 경로(`THYNC_HOME`), `config.json` 읽기, 출처 선택(`SOURCES`), PR 맡기기 가능 여부(`HANDOFF`), 시간 창과 모델 상수 |
-| `util.py` | 시각 변환, JSON 읽기·원자적 쓰기 |
-| `store.py` | `~/.thync`의 파일: 토큰, 바꾼 이름, 칸반 카드(Markdown), 맡긴 일 기록 |
+| `util.py` | 시각 변환, JSON 읽기·원자적 쓰기, Obsidian Kanban 보드 파일 판정(`is_kanban`)과 보드 카드 id의 접두어(`BOARD_CARD`) |
+| `store.py` | `~/.thync`의 파일: 토큰, 바꾼 이름, 칸반 카드(Markdown), 맡긴 일 기록. 카드 폴더의 Kanban 보드 파일과 UTF-8이 아닌 파일은 카드로 읽지 않고 덮어쓰지도 않습니다 |
 | `sources/claude_code.py` | Claude Code 세션 로그를 새로 붙은 줄만 이어 읽습니다. Codex 로그도 같은 방식으로 읽습니다 |
 | `sources/codex.py` | Codex 세션 로그의 한 줄을 해석합니다. 사용자가 친 글은 프롬프트, 도구 호출은 활동으로 기록합니다. Codex가 메시지에 넣은 문맥은 프롬프트로 세지 않습니다. 규칙은 [Codex 세션의 프롬프트 읽기](design/codex-prompts.md)에 있습니다 |
 | `sources/github.py` | `gh`로 리뷰 요청, 내 PR, 내 커밋을 조회합니다. 커밋은 `search/commits`(`author:@me`, 기본 브랜치만 검색 대상)와 내 PushEvent(브랜치별 마지막 push, 그 head 커밋 메시지)를 합칩니다. 백그라운드 스레드는 1분마다 갱신을 시도하고 결과를 기본 120초 동안 재사용합니다 |
@@ -87,10 +87,10 @@ Obsidian 노트 본문의 Jira 키는 작업 단위를 정하지 않고 티켓�
 | `sources/remote.py` | 다른 서버의 세션(`remotes` 설정). 서버마다 SSH 터널을 하나 열어 두고, 그 서버 thync 의 `/sessions.json`을 1.5초마다 읽어 이 서버의 세션 옆에 놓습니다. 바뀌지 않은 응답은 ETag 로 건너뜁니다. 터널이 끊기면 최대 30초 간격으로 다시 엽니다 |
 | `export.py` | `GET /sessions.json`. 이 서버의 세션을 그래프가 읽는 만큼만 잘라 내보냅니다. 프로필·저장소·PR 위임 여부·답할 수 있는 질문인지처럼 이 서버만 아는 값을 여기서 정합니다 |
 | `sources/notion.py` | Notion API `POST /v1/search`로 최근에 고친 페이지를 받습니다. 토큰이 있을 때 백그라운드 스레드가 1분마다 갱신을 시도하고 결과를 기본 120초 동안 재사용합니다 |
-| `sources/obsidian.py` | 설정한 vault 폴더에서 최근에 고친 `.md` 파일을 찾아 제목과 본문의 링크·태그·Jira 키·PR 주소를 뽑습니다. 서버에서는 백그라운드 스레드가 훑고, 요청은 마지막 결과만 읽습니다 |
+| `sources/obsidian.py` | 설정한 vault 폴더에서 최근에 고친 `.md` 파일을 찾아 제목과 본문의 링크·태그·Jira 키·PR 주소를 뽑습니다. 서버에서는 백그라운드 스레드가 훑고, 요청은 마지막 결과만 읽습니다. `obsidian_board`의 Kanban 보드 파일은 노트로 읽지 않고, `board_cards()`가 요청 때 읽어 읽기 전용 카드로 돌려줍니다([설계](design/obsidian-board.md)) |
 | `graph.py` | 출처를 모아 노드·연결·작업 단위·활동 목록을 만듭니다 |
 | `model.py` | 연구에서 가져온 규칙으로 밝기, 상태, 작업공간, 진행 중 여부를 정합니다 ([brain-model.md](brain-model.md)) |
-| `board.py` | 칸반 카드와 자동 칸을 계산하고, 카드 파일에 사용자가 지정한 값을 최종 카드에 적용합니다. 파일 저장은 `store.py`가 맡습니다 |
+| `board.py` | 칸반 카드와 자동 칸을 계산하고, 카드 파일에 사용자가 지정한 값을 최종 카드에 적용합니다. 파일 저장은 `store.py`가 맡습니다. 끝에 Obsidian Kanban 보드의 읽기 전용 카드를 더합니다 |
 | `reflex.py` | PR을 Claude에게 맡깁니다. 내 PR은 로컬 저장소를 찾아 tmux에서 Claude Code를 실행하고, 남의 PR은 `review.py`로 넘깁니다 |
 | `review.py` | 남의 PR을 임시 폴더에 받아 `claude -p --restricted`로 읽기만 시키고, 돌려받은 리뷰를 확인해 올립니다 |
 | `server.py` | HTTP 처리, 토큰 확인, 화면 파일 제공 |
@@ -134,7 +134,7 @@ Obsidian 노트 본문의 Jira 키는 작업 단위를 정하지 않고 티켓�
 | `hosts[]` | `remotes`에 적은 다른 서버의 상태: `name`, `ok`, `error`(연결되지 않은 이유), `seen`(마지막으로 받은 시각, 초). 없으면 빈 목록 |
 | `received[]` | 내 PR 에 다른 사람이 남긴 리뷰(리뷰어마다 가장 최근 것), 최신순 최대 30개: `pr`(PR 노드 id), `author`, `state`, `at`, `text`(본문 앞 300자) |
 | `activity[]` | 최근 활동(세션 로그를 읽으면 30분, 아니면 24시간): `at`, `kind`(`prompt`·`tool`·`commit`·`jira`·`notion`·`obsidian`), `text`, `session`(활동한 노드 id), `title`, `profile`, `host`(다른 서버의 세션이면 그 이름) |
-| `board[]` | 칸반 카드: `id`, `title`, `sub`, `column`, `auto_column`, `moved`, `note`, `file`, `profile`, `updated`, `focus`, `tags` |
+| `board[]` | 칸반 카드: `id`, `title`, `sub`, `column`, `auto_column`, `moved`, `note`, `file`, `profile`, `updated`, `focus`, `tags`. Obsidian Kanban 보드에서 읽은 카드는 `id`가 `obsidian-card:`로 시작하고 `readonly`가 `true`이며 `url`(보드를 여는 `obsidian://` 주소)이 있습니다. 서버는 이 id에 대한 `POST /board`와 `POST /rename`을 400으로 거부합니다 |
 
 ### 노드 종류
 
@@ -209,7 +209,7 @@ Obsidian 노트 본문의 Jira 키는 작업 단위를 정하지 않고 티켓�
 
 `thync/sources/`에 모듈을 하나 더하고, `graph.build_graph()`에서 그 결과를 `node()`와 `edge()`로 넣습니다. 노드에 `detail.unit`을 주면 그 작업 단위에 모이고, `roles`를 주면 색과 패널 목록이 반영됩니다. 화면은 고치지 않아도 됩니다.
 
-화면 코드에서 DOM 없이 판정할 수 있는 부분(`web/src/link.ts`)은 `web/test/`의 테스트로 확인합니다. `npm test`가 Node의 내장 테스트 실행기로 돌립니다.
+화면 코드에서 DOM 없이 판정할 수 있는 부분(`web/src/link.ts`, `web/src/card.ts`)은 `web/test/`의 테스트로 확인합니다. `npm test`가 Node의 내장 테스트 실행기로 돌립니다.
 
 ## brain-atlas
 

@@ -1,6 +1,10 @@
 import unittest
+import os
+import tempfile
 
-from thync.review import build_review, commentable
+os.environ["THYNC_HOME"] = tempfile.mkdtemp()  # even when the shell sets it: tests delete card files
+
+from thync.review import build_review, commentable  # noqa: E402
 
 DIFF = """diff --git a/app.py b/app.py
 --- a/app.py

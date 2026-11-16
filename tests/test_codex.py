@@ -10,7 +10,7 @@ import time
 import unittest
 from pathlib import Path
 
-os.environ.setdefault("THYNC_HOME", tempfile.mkdtemp())
+os.environ["THYNC_HOME"] = tempfile.mkdtemp()  # even when the shell sets it: tests delete card files
 
 from thync.sources.claude_code import _load_one  # noqa: E402
 from thync.sources.codex import CodexSession  # noqa: E402

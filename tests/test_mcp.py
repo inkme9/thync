@@ -1,7 +1,11 @@
 import unittest
+import os
+import tempfile
 from unittest import mock
 
-from thync import mcp
+os.environ["THYNC_HOME"] = tempfile.mkdtemp()  # even when the shell sets it: tests delete card files
+
+from thync import mcp  # noqa: E402
 
 
 class McpTest(unittest.TestCase):
