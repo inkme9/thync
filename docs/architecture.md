@@ -77,7 +77,7 @@ flowchart TD
 | `util.py` | 시각 변환, JSON 읽기·원자적 쓰기 |
 | `store.py` | `~/.thync`의 파일: 토큰, 바꾼 이름, 칸반 카드(Markdown), 맡긴 일 기록 |
 | `sources/claude_code.py` | Claude Code 세션 로그를 새로 붙은 줄만 이어 읽습니다. Codex 로그도 같은 방식으로 읽습니다 |
-| `sources/codex.py` | Codex CLI 세션 로그의 한 줄을 해석합니다. 사용자 메시지는 프롬프트, 도구 호출은 활동으로 기록합니다 |
+| `sources/codex.py` | Codex 세션 로그의 한 줄을 해석합니다. 사용자가 친 글은 프롬프트, 도구 호출은 활동으로 기록합니다. Codex가 메시지에 넣은 문맥은 프롬프트로 세지 않습니다. 규칙은 [Codex 세션의 프롬프트 읽기](design/codex-prompts.md)에 있습니다 |
 | `sources/github.py` | `gh`로 리뷰 요청, 내 PR, 내 커밋을 조회합니다. 커밋은 `search/commits`(`author:@me`, 기본 브랜치만 검색 대상)와 내 PushEvent(브랜치별 마지막 push, 그 head 커밋 메시지)를 합칩니다. 백그라운드 스레드는 1분마다 갱신을 시도하고 결과를 기본 120초 동안 재사용합니다 |
 | `sources/jira.py` | `jira.json`의 티켓 요약과 에픽, 브랜치·제목에서 Jira 키 찾기. 설정하면 백그라운드 스레드가 그래프에 나온 키와 나에게 배정된 티켓(`/rest/api/3/search/jql`)을 Jira REST API로 받아 `jira.json`을 갱신하고, 배정된 티켓에 `mine: true`를 기록합니다 |
 | `sources/remote.py` | 다른 서버의 세션(`remotes` 설정). 서버마다 SSH 터널을 하나 열어 두고, 그 서버 thync 의 `/sessions.json`을 1.5초마다 읽어 이 서버의 세션 옆에 놓습니다. 바뀌지 않은 응답은 ETag 로 건너뜁니다. 터널이 끊기면 최대 30초 간격으로 다시 엽니다 |
