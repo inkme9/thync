@@ -1,6 +1,7 @@
 // The modal: node details (opened from the 상세 buttons or by clicking an already focused node) and the
 // hand-off confirmation in reflex.ts. Close with ×, a click outside, or Esc.
 import { api, post } from "./api.ts";
+import { linkKind } from "./link.ts";
 import { refresh } from "./main.ts";
 import { state } from "./state.ts";
 import { REVIEW_STATE, ago } from "./style.ts";
@@ -97,9 +98,11 @@ function showDetail(id: string): void {
     const row = document.createElement("div");
     const vv = document.createElement(k === "링크" ? "a" : "span");
     vv.textContent = v;
-    if (vv instanceof HTMLAnchorElement && /^https?:\/\//.test(v)) {
+    const kind = vv instanceof HTMLAnchorElement ? linkKind(v) : null;
+    if (vv instanceof HTMLAnchorElement && kind) {
       vv.href = v; // kept so middle-click and "copy link" still work
-      vv.onclick = (e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); openOnce(v); } };
+      // An Obsidian note's link is left to the browser, which hands it to the app on every click (link.ts).
+      if (kind === "web") vv.onclick = (e) => { if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { e.preventDefault(); openOnce(v); } };
     }
     row.append(Object.assign(document.createElement("b"), { textContent: k }), vv);
     return row;

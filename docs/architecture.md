@@ -23,6 +23,7 @@ flowchart TD
     GitHub["GitHub: gh 조회와 캐시"] --> Graph
     Jira["Jira API → jira.json"] --> Graph
     Notion["Notion 검색 API와 캐시"] --> Graph
+    Obsidian["Obsidian vault 폴더: 선택"] --> Graph
     Store["names.json · cards/*.md"] --> Graph
     Graph --> Model["model.think() · mark_live()"]
     Model --> Board["board.build_board()"]
@@ -39,14 +40,16 @@ flowchart TD
 
 ## 작업 단위
 
-활동의 출처(세션, 커밋, 배정된 티켓, Notion 페이지)는 하나의 작업 단위에 속합니다. 순서대로 처음 일치하는 기준을 적용합니다.
+활동의 출처(세션, 커밋, 배정된 티켓, Notion 페이지, Obsidian 노트)는 하나의 작업 단위에 속합니다. 순서대로 처음 일치하는 기준을 적용합니다.
 
-1. 브랜치 이름, 세션 제목, 커밋 메시지, 페이지 제목에 Jira 키가 있으면: 티켓에 에픽이 있으면 에픽(`epic:KEY`), 없으면 티켓(`jira:KEY`)
+1. 브랜치 이름, 세션 제목, 커밋 메시지, 페이지 제목, 노트 제목에 Jira 키가 있으면: 티켓에 에픽이 있으면 에픽(`epic:KEY`), 없으면 티켓(`jira:KEY`)
 2. 기본 브랜치가 아니면: 브랜치(`branch:<repo>:<branch>`)
 3. 저장소 폴더나 기본 브랜치 커밋이면: 저장소(`repo:<repo>`)
-4. 그 밖: 세션 하나(`session:<id>`)나 Notion 페이지 하나(`notion:<id>`)
+4. 그 밖: 세션 하나(`session:<id>`), Notion 페이지 하나(`notion:<id>`), Obsidian 노트 하나(`obsidian:<vault>:<경로>`)
 
 제목·메시지 속 대문자 키(`ABC-123`)는 같은 접두어가 브랜치 이름이나 배정된 티켓에 나올 때만 Jira 키로 봅니다.
+
+Obsidian 노트 본문의 Jira 키는 작업 단위를 정하지 않고 티켓과 연결만 합니다. 노트는 다른 출처를 모두 넣은 뒤에 처리하므로, 이미 있는 티켓과 PR 노드의 종류와 프로필은 노트 때문에 바뀌지 않습니다. 본문에만 나온 티켓은 노트의 작업 단위에 그리되 `detail.mention`으로 표시하고, 칸반은 이 티켓의 상태를 카드에 반영하지 않습니다. 노트 제목의 Jira 키는 다른 출처의 제목처럼 작업 단위를 만들므로, 같은 키를 가진 리뷰 요청은 위 규칙대로 그 단위로 들어갑니다. 근거는 [Obsidian vault 출처 설계](design/obsidian-source.md)에 있습니다.
 
 ## 활동 출처(`last_at`)
 
@@ -59,6 +62,7 @@ flowchart TD
 | 기본 브랜치 커밋 | 메시지의 Jira 티켓, 없으면 `repo:<repo>` | 커밋 시각 |
 | 나에게 배정된 티켓 | `jira:<KEY>` | 티켓 `updated` |
 | Notion 페이지 | `notion:<id>` | `last_edited_time` |
+| Obsidian 노트 | `obsidian:<vault>:<경로>` | 파일 수정 시각 |
 
 백그라운드(`running`)는 Claude가 일하는데 내가 입력하지 않는 세션, 또는 진행 중인 내 티켓 가운데 작업공간 단위에 들지 못한 것입니다.
 
@@ -83,6 +87,7 @@ flowchart TD
 | `sources/remote.py` | 다른 서버의 세션(`remotes` 설정). 서버마다 SSH 터널을 하나 열어 두고, 그 서버 thync 의 `/sessions.json`을 1.5초마다 읽어 이 서버의 세션 옆에 놓습니다. 바뀌지 않은 응답은 ETag 로 건너뜁니다. 터널이 끊기면 최대 30초 간격으로 다시 엽니다 |
 | `export.py` | `GET /sessions.json`. 이 서버의 세션을 그래프가 읽는 만큼만 잘라 내보냅니다. 프로필·저장소·PR 위임 여부·답할 수 있는 질문인지처럼 이 서버만 아는 값을 여기서 정합니다 |
 | `sources/notion.py` | Notion API `POST /v1/search`로 최근에 고친 페이지를 받습니다. 토큰이 있을 때 백그라운드 스레드가 1분마다 갱신을 시도하고 결과를 기본 120초 동안 재사용합니다 |
+| `sources/obsidian.py` | 설정한 vault 폴더에서 최근에 고친 `.md` 파일을 찾아 제목과 본문의 링크·태그·Jira 키·PR 주소를 뽑습니다. 서버에서는 백그라운드 스레드가 훑고, 요청은 마지막 결과만 읽습니다 |
 | `graph.py` | 출처를 모아 노드·연결·작업 단위·활동 목록을 만듭니다 |
 | `model.py` | 연구에서 가져온 규칙으로 밝기, 상태, 작업공간, 진행 중 여부를 정합니다 ([brain-model.md](brain-model.md)) |
 | `board.py` | 칸반 카드와 자동 칸을 계산하고, 카드 파일에 사용자가 지정한 값을 최종 카드에 적용합니다. 파일 저장은 `store.py`가 맡습니다 |
@@ -128,7 +133,7 @@ flowchart TD
 | `edges[]` | 노드 id 두 개 |
 | `hosts[]` | `remotes`에 적은 다른 서버의 상태: `name`, `ok`, `error`(연결되지 않은 이유), `seen`(마지막으로 받은 시각, 초). 없으면 빈 목록 |
 | `received[]` | 내 PR 에 다른 사람이 남긴 리뷰(리뷰어마다 가장 최근 것), 최신순 최대 30개: `pr`(PR 노드 id), `author`, `state`, `at`, `text`(본문 앞 300자) |
-| `activity[]` | 최근 활동(세션 로그를 읽으면 30분, 아니면 24시간): `at`, `kind`(`prompt`·`tool`·`commit`·`jira`·`notion`), `text`, `session`(활동한 노드 id), `title`, `profile`, `host`(다른 서버의 세션이면 그 이름) |
+| `activity[]` | 최근 활동(세션 로그를 읽으면 30분, 아니면 24시간): `at`, `kind`(`prompt`·`tool`·`commit`·`jira`·`notion`·`obsidian`), `text`, `session`(활동한 노드 id), `title`, `profile`, `host`(다른 서버의 세션이면 그 이름) |
 | `board[]` | 칸반 카드: `id`, `title`, `sub`, `column`, `auto_column`, `moved`, `note`, `file`, `profile`, `updated`, `focus`, `tags` |
 
 ### 노드 종류
@@ -143,7 +148,8 @@ flowchart TD
 | `project` | Jira 티켓 |
 | `source` | PR |
 | `incident` | 나에게 온 리뷰 요청 |
-| `dailyNote` | 파일 또는 Notion 페이지 |
+| `dailyNote` | 파일, Notion 페이지 또는 Obsidian 노트 |
+| `concept` | Obsidian 노트 두 개 이상이 함께 가진 태그 |
 
 ### 노드 상세 정보
 
@@ -155,6 +161,7 @@ flowchart TD
 | `live` | 진행 중 판정 |
 | `act` | 활성 정도, 0~1 |
 | `kind_label`, `text` | 종류 표시와 설명 |
+| `mention` | Obsidian 노트 본문에만 나온 Jira 티켓이면 `true`. 노트의 작업 단위에 그리지만 칸반 카드의 칸과 꼬리표에는 반영하지 않습니다 |
 | `url` | 관련 항목 링크 |
 | `repo`, `branch`, `cwd` | 저장소·브랜치·작업 폴더 |
 | `host` | 세션과 파일이 있는 서버 이름(`remotes`의 `name`). 이 서버의 것이면 빈 문자열. 다른 서버의 파일 노드 id 는 `file:<host>:<경로>`입니다 |
@@ -201,6 +208,8 @@ flowchart TD
 ## 출처를 더하려면
 
 `thync/sources/`에 모듈을 하나 더하고, `graph.build_graph()`에서 그 결과를 `node()`와 `edge()`로 넣습니다. 노드에 `detail.unit`을 주면 그 작업 단위에 모이고, `roles`를 주면 색과 패널 목록이 반영됩니다. 화면은 고치지 않아도 됩니다.
+
+화면 코드에서 DOM 없이 판정할 수 있는 부분(`web/src/link.ts`)은 `web/test/`의 테스트로 확인합니다. `npm test`가 Node의 내장 테스트 실행기로 돌립니다.
 
 ## brain-atlas
 
