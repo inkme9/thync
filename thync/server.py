@@ -15,6 +15,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -75,9 +76,11 @@ class Handler(SimpleHTTPRequestHandler):
     def from_tailscale_page(self) -> bool:
         """Sent by thync's own page at this machine's MagicDNS name. X-Thync-Token, even empty, is a header a page
         of another site cannot send without a CORS preflight, which this server never grants: that stops CSRF.
-        The exact name stops DNS rebinding, because while Tailscale runs, MagicDNS answers that name itself."""
+        The exact name stops DNS rebinding, because a device that runs Tailscale with its DNS settings answers that
+        name itself."""
         host = urlsplit("//" + self.headers.get("Host", "")).hostname or ""
-        return bool(TAILSCALE_NAME) and host == TAILSCALE_NAME and "X-Thync-Token" in self.headers
+        name = tailscale_name()
+        return bool(name) and host == name and "X-Thync-Token" in self.headers
 
     def tailscale_login(self) -> str:
         """Tailscale-User-Login as `tailscale serve` sends it: RFC 2047 encoded when it is not ASCII."""
@@ -342,23 +345,37 @@ def session_state(n: dict) -> dict:
             "background": "running" in n["roles"]}
 
 
+# An app started from the macOS GUI has no /usr/local/bin on PATH, so the app bundle's CLI is the fallback.
+TAILSCALE_CLI = shutil.which("tailscale") or "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+_name_tried = 0.0
+
+
 def own_tailscale_name() -> str:
     """This machine's MagicDNS name (mini.tail1234.ts.net); "" when the tailscale CLI cannot tell."""
     try:
-        out = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=10)
+        out = subprocess.run([TAILSCALE_CLI, "status", "--json"], capture_output=True, text=True, timeout=10)
         return str(json.loads(out.stdout)["Self"]["DNSName"]).rstrip(".").casefold()
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
         return ""
 
 
+def tailscale_name() -> str:
+    """TAILSCALE_NAME, looked up again at most once a minute while it is empty: Tailscale may come up after thync."""
+    global TAILSCALE_NAME, _name_tried
+    if TAILSCALE_USERS and not TAILSCALE_NAME and time.monotonic() - _name_tried > 60:
+        _name_tried = time.monotonic()
+        TAILSCALE_NAME = own_tailscale_name()
+    return TAILSCALE_NAME
+
+
 def main() -> None:
-    global TOKEN, TAILSCALE_NAME
+    global TOKEN, TAILSCALE_NAME, _name_tried
     os.umask(0o077)
     TOKEN = load_token()
     if TAILSCALE_USERS:
-        TAILSCALE_NAME = own_tailscale_name()
+        TAILSCALE_NAME, _name_tried = own_tailscale_name(), time.monotonic()
         print(f"thync: tailscale_users open https://{TAILSCALE_NAME}/ without the token" if TAILSCALE_NAME
-              else "thync: tailscale_users ignored: `tailscale status` gave no name for this machine", flush=True)
+              else "thync: tailscale_users waits for `tailscale status` to name this machine", flush=True)
     print(f"thync: http://{HOST}:{PORT}/  (first time: enter the contents of {STATE_DIR / 'token'} on the page)", flush=True)
     # Exit through atexit on kill/pkill too, so the SSH tunnels to remotes close with the server.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))

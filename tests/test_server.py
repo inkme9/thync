@@ -70,8 +70,13 @@ class TailscaleUsers(unittest.TestCase):
         """Another *.ts.net name could be rebound to 127.0.0.1 by a hostile resolver."""
         for host in ("evil.tail9999.ts.net", "other.tail1234.ts.net", "127.0.0.1:8765", "localhost"):
             self.assertEqual(self.status({"Tailscale-User-Login": "me@example.com"}, host=host), 401, host)
-        with mock.patch.object(server, "TAILSCALE_NAME", ""):
+        with mock.patch.object(server, "TAILSCALE_NAME", ""), mock.patch.object(server, "own_tailscale_name", lambda: ""):
             self.assertEqual(self.status({"Tailscale-User-Login": "me@example.com"}), 401)
+
+    def test_the_name_is_looked_up_again_when_tailscale_came_up_late(self):
+        with mock.patch.object(server, "TAILSCALE_NAME", ""), mock.patch.object(server, "_name_tried", -1e9), \
+             mock.patch.object(server, "own_tailscale_name", lambda: "mini.tail1234.ts.net"):
+            self.assertEqual(self.status({"Tailscale-User-Login": "me@example.com"}), 200)
 
     def test_no_login_passes_when_none_is_listed(self):
         with mock.patch.object(server, "TAILSCALE_USERS", set()):
