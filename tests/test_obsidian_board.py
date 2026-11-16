@@ -72,7 +72,8 @@ class Setting(unittest.TestCase):
 
     def test_nothing_or_an_unusable_value_is_no_board(self):
         with mock.patch("sys.stderr"):
-            for raw in (None, "", [], 3, {"profile": "회사"}, "notes/board.md", {"path": "board.md"}, "~no-such-user-here/b.md"):
+            for raw in (None, "", [], 3, {"profile": "회사"}, "notes/board.md", {"path": "board.md"}, "~no-such-user-here/b.md",
+                        "/v/a\0b.md", "/v/\ud800.md"):
                 self.assertIsNone(config.parse_board(raw), raw)
 
 
@@ -131,6 +132,16 @@ class Format(unittest.TestCase):
         self.assertEqual(len({c["id"] for c in twins}), 3)
         self.assertEqual(twins[1]["id"], twins[0]["id"] + "-2")
         self.assertEqual(before["title"], "같은 글")  # the block id is not shown
+
+    def test_the_block_id_at_the_end_of_a_card_of_several_lines_is_not_text(self):
+        head = "---\nkanban-plugin: board\n---\n\n## Ideas\n\n"
+        (marked,) = cards_of(head + "- [ ] 제목\n    둘째 줄 ^blk1\n")
+        (plain,) = cards_of(head + "- [ ] 제목\n    둘째 줄\n")
+        self.assertEqual((marked["id"], marked["note"]), (plain["id"], "둘째 줄"))
+
+    def test_a_long_lane_name_is_cut(self):
+        (card,) = cards_of("---\nkanban-plugin: board\n---\n\n## " + "가" * 500 + "\n\n- [ ] x\n")
+        self.assertEqual(card["tags"], ["가" * obsidian.MAX_LANE, "Obsidian"])
 
     def test_the_settings_block_and_the_archive_are_not_cards(self):
         text = ("---\nkanban-plugin: board\n---\n\n## Ideas\n\n- [ ] 남는 카드\n\n***\n\n## Archive\n\n- [ ] 보관한 카드\n\n"

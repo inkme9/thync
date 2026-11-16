@@ -1,7 +1,11 @@
 import unittest
+import os
+import tempfile
 from unittest import mock
 
-from thync import mcp
+os.environ.setdefault("THYNC_HOME", tempfile.mkdtemp())  # never the real ~/.thync
+
+from thync import mcp  # noqa: E402
 
 
 class McpTest(unittest.TestCase):

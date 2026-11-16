@@ -102,6 +102,13 @@ def parse_board(raw) -> dict | None:
     if not os.path.isabs(path):
         print(f"thync: obsidian_board {v['path']} ignored: write an absolute path or one under ~", file=sys.stderr, flush=True)
         return None
+    try:
+        if "\0" in path:
+            raise ValueError
+        os.fsencode(path)
+    except (ValueError, UnicodeEncodeError):  # no file can have this name, and lstat would raise on every request
+        print("thync: obsidian_board ignored: the path has a character no file name can have", file=sys.stderr, flush=True)
+        return None
     return {"path": path, "profile": PROFILE_WORK if v.get("profile") == PROFILE_WORK else PROFILE_PERSONAL}
 
 

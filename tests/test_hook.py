@@ -1,7 +1,11 @@
 import unittest
+import os
+import tempfile
 from unittest import mock
 
-from thync import hook
+os.environ.setdefault("THYNC_HOME", tempfile.mkdtemp())  # never the real ~/.thync
+
+from thync import hook  # noqa: E402
 
 
 def graph(n_prs: int) -> dict:

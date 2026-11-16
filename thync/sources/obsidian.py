@@ -37,6 +37,7 @@ TAG = re.compile(r"(?:^|(?<=\s))#([\w/-]+)", re.M)  # at the start of a line or 
 PULL = re.compile(r"(?<![A-Za-z0-9])https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)(?![A-Za-z0-9])")
 
 MAX_BOARD_CARDS = 200     # cards read from the Kanban board
+MAX_LANE = 100            # characters of a lane name, which every card of the lane carries as a tag
 LANE = re.compile(r"^##[ \t]+(.*\S)[ \t]*$")
 ITEM = re.compile(r"^- (?:\[(.)\][ \t]+)?(.*\S)[ \t]*$")       # "- [ ] text", "- [x] text" or "- text", not indented
 BOLD_LINE = re.compile(r"\*\*[^*\n]+\*\*")                      # the plugin's mark of a lane that completes its cards
@@ -206,7 +207,7 @@ def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
             break
         heading, entry = LANE.match(line), ITEM.match(line)
         if heading:
-            lane, item = {"name": heading.group(1), "complete": False, "cards": 0}, None
+            lane, item = {"name": heading.group(1)[:MAX_LANE], "complete": False, "cards": 0}, None
         elif lane and entry and re.fullmatch(r"\[.\]", entry.group(2)):
             item = None  # a checkbox with no text is no card
         elif lane and entry:
@@ -217,10 +218,12 @@ def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
             item["lines"].append(line.strip())  # a card of several lines
         elif lane and not lane["cards"] and BOLD_LINE.fullmatch(line.strip()):
             lane["complete"] = True
-    url = "obsidian://open?path=" + urllib.parse.quote(path, safe="")
+    url = "obsidian://open?path=" + urllib.parse.quote(os.fsencode(path), safe="")
     cards, seen = [], {}
     for it in items[:MAX_BOARD_CARDS]:
-        first, rest = BLOCK_ID.sub("", it["lines"][0]), it["lines"][1:]
+        # The plugin puts a card's block id at the end of its text: the last line of a card of several lines.
+        lines = [BLOCK_ID.sub("", line) if i in (0, len(it["lines"]) - 1) else line for i, line in enumerate(it["lines"])]
+        first, rest = lines[0], lines[1:]
         # The id comes from the text alone, so checking a card or moving it to another lane keeps it.
         digest = hashlib.sha1(" ".join(" ".join([first, *rest]).split()).encode()).hexdigest()[:12]
         seen[digest] = seen.get(digest, 0) + 1

@@ -2,9 +2,13 @@ import io
 import json
 import unittest
 import urllib.request
+import os
+import tempfile
 from unittest import mock
 
-from thync.sources import jira
+os.environ.setdefault("THYNC_HOME", tempfile.mkdtemp())  # never the real ~/.thync
+
+from thync.sources import jira  # noqa: E402
 
 
 class JiraTest(unittest.TestCase):

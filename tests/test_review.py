@@ -1,6 +1,10 @@
 import unittest
+import os
+import tempfile
 
-from thync.review import build_review, commentable
+os.environ.setdefault("THYNC_HOME", tempfile.mkdtemp())  # never the real ~/.thync
+
+from thync.review import build_review, commentable  # noqa: E402
 
 DIFF = """diff --git a/app.py b/app.py
 --- a/app.py
