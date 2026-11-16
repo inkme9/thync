@@ -178,25 +178,29 @@ def board_column(lane: str, complete: bool, checked: bool) -> str:
     return "doing" if words & DOING_WORDS else "todo"
 
 
-EMPHASIS = re.compile(r"(\*\*|~~|==|\*)(?=[^\s*~=])(.+?)(?<=[^\s*~=])\1")  # marks around text, not a line of marks
+# Marks around text, not a line of marks. A double mark (**bold**, ~~struck~~) is markup wherever it stands. A
+# single * or == is markup only when it stands apart from the words around it: 2*3*4 and a==b==c are not emphasis.
+STRONG = re.compile(r"(\*\*|~~)(?=[^\s*~])(.+?)(?<=[^\s*~])\1")
+SOFT = re.compile(r"(?<![\w*=])(\*|==)(?=[^\s*=])(.+?)(?<=[^\s*=])\1(?![\w*=])")
 
 
 def _plain(text: str) -> str:
     """Card text without its markup: links and embeds as their names, emphasis without its marks."""
     text = WIKILINK.sub(r"\1", text.replace("![[", "[["))
-    for _ in range(3):  # **bold *and italic***
-        text = EMPHASIS.sub(r"\2", text)
+    for _ in range(2):  # **bold *and italic***
+        text = SOFT.sub(r"\2", STRONG.sub(r"\2", text))
     return text
 
 
 def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
     """The cards of a Kanban board file, in board order. Not a board (no kanban-plugin key): no cards."""
-    text = text.replace("\r\n", "\n")
-    if not is_kanban(text):
+    text = text.lstrip("\ufeff").replace("\r\n", "\n")  # the same text is_kanban() judges
+    front = FRONT_MATTER.match(text)
+    if not front or not is_kanban(text):
         return []
     items: list[dict] = []
     lane = item = None
-    for line in text[FRONT_MATTER.match(text).end():].split("\n"):
+    for line in text[front.end():].split("\n"):
         if line.startswith("%% kanban:settings") or line.rstrip() == "***":  # the settings block; the archive (column 0)
             break
         heading, entry = LANE.match(line), ITEM.match(line)
@@ -222,8 +226,9 @@ def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
         bold = re.match(r"\*\*(.+?)\*\*[ \t]*(.*)$", first)
         title, lead = (bold.group(1), bold.group(2).lstrip("—–-:· \t")) if bold else (first, "")
         column = board_column(it["lane"]["name"], it["lane"]["complete"], it["checked"])
+        name = " ".join(_plain(title).split())
         cards.append({"id": BOARD_CARD + digest + (f"-{seen[digest]}" if seen[digest] > 1 else ""),
-                      "title": " ".join(_plain(title).split())[:200] or "(제목 없음)",
+                      "title": name[:200] if re.search(r"\w", name) else "(제목 없음)",  # only marks left: no title
                       "note": "\n".join(_plain(x) for x in ([lead] if lead else []) + rest)[:4000],
                       "sub": "", "column": column, "auto_column": column, "moved": False, "profile": profile,
                       "updated": updated, "focus": "", "file": path, "url": url, "readonly": True,

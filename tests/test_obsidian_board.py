@@ -148,8 +148,17 @@ class Format(unittest.TestCase):
         head = "---\nkanban-plugin: board\n---\n\n## Ideas\n\n"
         (card,) = cards_of(head + "- [ ] *기울임* ~~지움~~ ==강조== ![[그림.png]] 2*3\n  **굵게** [[노트]]\n")
         self.assertEqual((card["title"], card["note"]), ("기울임 지움 강조 그림.png 2*3", "굵게 노트"))
-        (blank,) = cards_of(head + "- [ ] ** **\n")
-        self.assertEqual(blank["title"], "(제목 없음)")
+        for marks in ("** **", "****", "[[]]", "~~ ~~"):
+            (blank,) = cards_of(head + f"- [ ] {marks}\n")
+            self.assertEqual(blank["title"], "(제목 없음)", marks)
+
+    def test_operators_are_not_taken_for_markup(self):
+        head = "---\nkanban-plugin: board\n---\n\n## Ideas\n\n"
+        for text in ("2*3*4 계산", "a==b==c", "if a==1 and b==2", "5 * 3 * 2", "_밑줄_ 그대로"):
+            (card,) = cards_of(head + f"- [ ] {text}\n")
+            self.assertEqual(card["title"], text)
+        (card,) = cards_of(head + "- [ ] **굵은 글**을 고치고 *기울임* 과 ==강조== 확인\n")
+        self.assertEqual((card["title"], card["note"]), ("굵은 글", "을 고치고 기울임 과 강조 확인"))
 
     def test_long_text_and_many_cards_are_cut(self):
         text = "---\nkanban-plugin: board\n---\n\n## Ideas\n\n" + "".join(f"- [ ] 카드 {i}\n" for i in range(250))
@@ -181,6 +190,11 @@ class BoardFile(unittest.TestCase):
     def test_no_setting_no_cards(self):
         with mock.patch.object(obsidian, "OBSIDIAN_BOARD", None):
             self.assertEqual(obsidian.board_cards(), [])
+
+    def test_a_board_that_starts_with_a_byte_order_mark_is_read(self):
+        self.path.write_text("\ufeff" + TEMPLATE, encoding="utf-8")
+        self.assertEqual(len(self.titles()), 6)
+        self.assertEqual(len(cards_of("\ufeff" + TEMPLATE)), 6)
 
     def test_an_unchanged_board_is_not_read_again(self):
         self.assertEqual(len(self.titles()), 6)
