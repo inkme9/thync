@@ -87,7 +87,7 @@ class GitHub(unittest.TestCase):
 
     def test_a_review_request_is_answered_as_the_reviewer_not_the_author(self):
         lists = {"author": {"sent": [{"url": "u"}]}, "reviewer": {"reviews": [{"html_url": "u"}]}}
-        with mock.patch.multiple(github, ACCOUNTS=["author", "reviewer"], _lists=lists):
+        with mock.patch.multiple(github, ACCOUNTS=["author", "reviewer"], _lists=lists, _seen_by={}):
             github._index()
             self.assertEqual(github.account_for("u"), "reviewer")
 

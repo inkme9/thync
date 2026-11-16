@@ -12,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -28,6 +29,10 @@ _logins: dict[str, str] = {}  # account -> my login there, lowercased
 _failing: set[str] = set()  # "account kind" pairs whose last fetch failed, so each failure is logged once
 refreshed = 0.0  # when refresh() last finished
 FAILED = (subprocess.SubprocessError, OSError, json.JSONDecodeError, KeyError, TypeError)
+# A shell that starts thync in the background (the desktop app's `nohup … &`) leaves SIGINT ignored, and children
+# inherit that, so mien would ignore the SIGINT _run() sends. A handled signal is reset to default in a child.
+if signal.getsignal(signal.SIGINT) == signal.SIG_IGN and threading.current_thread() is threading.main_thread():
+    signal.signal(signal.SIGINT, signal.default_int_handler)
 
 SENT_QUERY = """query { search(query:"is:open is:pr author:@me archived:false", type:ISSUE, first:50) { nodes { ... on PullRequest {
   title url number updatedAt isDraft repository { name } reviewDecision author { login }
@@ -47,7 +52,7 @@ def _run(cmd: list[str], stdin: str | None, env: dict | None, timeout: int) -> s
             try:
                 p.communicate(timeout=10)
             except subprocess.TimeoutExpired:
-                p.kill()
+                os.killpg(p.pid, signal.SIGKILL)
                 p.communicate()
             raise
     if p.returncode:
