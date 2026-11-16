@@ -13,8 +13,9 @@ const sentList = document.querySelector<HTMLUListElement>("#sent")!;
 const receivedList = document.querySelector<HTMLUListElement>("#received")!;
 const statusLine = document.querySelector<HTMLSpanElement>("#status")!;
 
-export function setStatus(text: string): void {
+export function setStatus(text: string, title = ""): void {
   statusLine.textContent = text;
+  statusLine.title = title;
 }
 
 export function infoButton(id: string): HTMLButtonElement {
@@ -82,7 +83,10 @@ export function renderPanel(): void {
     return li;
   }), "받은 리뷰 없음");
 
-  // Each remote: ✓ while its sessions come in, ✕ with the reason when it cannot be reached.
-  const hosts = (state.data.hosts ?? []).map((h) => h.ok ? `${h.name} ✓` : `${h.name} ✕ ${h.error}${h.seen ? ` (마지막 수신 ${ago(h.seen)})` : ""}`);
-  setStatus(`몰입 ${Math.round(state.data.focus_level * 100)}% · 작업공간 ${focused.length}/4 · 백그라운드 ${running.length} · 리뷰 ${reviews.length} · ${new Date(state.data.generated * 1000).toLocaleTimeString()}${hosts.length ? ` · ${hosts.join(" · ")}` : ""}`);
+  // Each remote: ✓ while its sessions come in, ✕ 접속 끊김 when it cannot be reached; the reason is in the tooltip.
+  const hosts = state.data.hosts ?? [];
+  const marks = hosts.map((h) => `${h.name} ${h.ok ? "✓" : "✕ 접속 끊김"}`);
+  const reasons = hosts.filter((h) => !h.ok).map((h) => `${h.name}: ${h.error}${h.seen ? ` (마지막 수신 ${ago(h.seen)})` : ""}`);
+  setStatus(`몰입 ${Math.round(state.data.focus_level * 100)}% · 작업공간 ${focused.length}/4 · 백그라운드 ${running.length} · 리뷰 ${reviews.length} · ${new Date(state.data.generated * 1000).toLocaleTimeString()}${marks.length ? ` · ${marks.join(" · ")}` : ""}`,
+    reasons.join("\n"));
 }
