@@ -28,9 +28,9 @@ class FakeMachine:
     """subprocess.run for a machine with mien, gh, tmux and a clone of o/r."""
 
     def __init__(self, author: str, login: str = "me", profile: str = "cryptolab", tmux_rc: int = 0, state: str = "open",
-                 draft: bool = False):
+                 draft: bool = False, alive: tuple = ()):
         self.author, self.login, self.profile, self.tmux_rc, self.state = author, login, profile, tmux_rc, state
-        self.draft = draft
+        self.draft, self.alive = draft, alive
         self.calls: list[list[str]] = []
 
     def __call__(self, argv, **kw):
@@ -38,9 +38,9 @@ class FakeMachine:
         self.calls.append(argv)
         rc, out, err = 0, "", ""
         if argv[:2] == ["tmux", "new-session"]:
-            rc, err = self.tmux_rc, "duplicate session: x" if self.tmux_rc else ""
-        elif argv[0] == "tmux":
-            rc = 1
+            rc, err = self.tmux_rc, "duplicate session: x" if self.tmux_rc == 1 else "no server" if self.tmux_rc else ""
+        elif argv[:2] == ["tmux", "has-session"]:
+            rc = 0 if argv[-1].lstrip("=") in self.alive else 1
         elif argv[:2] == ["git", "-C"]:
             out = "git@github.com:o/r.git\n"
         elif Path(argv[0]).name == "mien" and argv[1] == "which":
@@ -83,7 +83,10 @@ class HandoffTest(unittest.TestCase):
         self.assertEqual(status, 202)
         [command] = machine.launches()
         self.assertIn(f"/concord:review-until-approve {A}", command)
-        self.assertEqual(shlex.split(command)[:3], ["/usr/bin/mien", "exec", "cryptolab"])
+        argv = shlex.split(command.split("; echo $?")[0])
+        # mien exec drops the first `--`; the one left must still sit right before the prompt for claude.
+        self.assertEqual(argv[:4], ["/usr/bin/mien", "exec", "cryptolab", "--"])
+        self.assertEqual((argv[4], argv[-2]), ("/usr/bin/claude", "--"))
         self.assertNotIn("pr-to-merge", command)
         self.assertNotIn("/pull/8", command)
         prompt = shlex.split(command.split("; echo $?")[0])[-1]
@@ -135,17 +138,54 @@ class HandoffTest(unittest.TestCase):
         self.assertTrue(all(c[:3] == ["mien", "exec", "cryptolab"] for c in machine.calls if "gh" in c))
 
     def test_start_refuses_when_the_check_differs_from_what_was_confirmed(self):
-        shown = {"url": A, "workflow": "concord:review-until-approve", "profile": "cryptolab", "login": "someone-else"}
-        machine = FakeMachine(author="alice")
-        status, _ = self.run_handoff(pr_node("review"), machine, call=lambda n: reflex.start_reflex(n, shown))
-        self.assertEqual(status, 409)
-        self.assertEqual((machine.launches(), self.saved), ([], {}))
+        same = {"url": A, "workflow": "concord:review-until-approve", "profile": "cryptolab", "login": "me", "cwd": self.clone}
+        for key, value in (("login", "someone-else"), ("profile", "other"), ("cwd", "/elsewhere"),
+                           ("workflow", "concord:pr-to-merge")):
+            machine = FakeMachine(author="alice")
+            status, _ = self.run_handoff(pr_node("review"), machine,
+                                         call=lambda n: reflex.start_reflex(n, {**same, key: value}))
+            self.assertEqual(status, 409, key)
+            self.assertEqual((machine.launches(), self.saved), ([], {}))
+        status, _ = self.run_handoff(pr_node("review"), FakeMachine(author="alice"),
+                                     call=lambda n: reflex.start_reflex(n, same))
+        self.assertEqual(status, 202)
 
     def test_second_handoff_of_a_running_pr_is_refused(self):
         machine = FakeMachine(author="me", tmux_rc=1)  # tmux refuses the session name it already has
         status, message = self.run_handoff(pr_node("sent"), machine)
         self.assertEqual((status, self.saved), (409, {}))
-        self.assertIn("tmux attach -t thync-o-r-7", message)
+        self.assertIn(f"tmux attach -t {reflex.session_name('o/r', '7')}", message)
+
+    def test_check_of_a_running_pr_answers_with_its_session_even_when_merged(self):
+        name = reflex.session_name("o/r", "7")
+        machine = FakeMachine(author="me", state="closed", alive=(name,))
+        status, reply = self.run_handoff(pr_node("sent"), machine, call=reflex.plan_reflex)
+        self.assertEqual((status, reply["message"]), (409, f"이미 돌고 있어요 (tmux attach -t {name})"))
+
+    def test_second_pr_to_merge_in_the_same_clone_is_refused(self):
+        other = reflex.session_name("o/r", "9")
+        machine = FakeMachine(author="me", alive=(other,))
+        records = {"https://github.com/o/r/pull/9": {"tmux": other, "skill": "concord:pr-to-merge", "cwd": self.clone,
+                                                     "started": 1}}
+        with mock.patch.object(reflex, "load_reflexes", return_value=records):
+            status, message = self.run_handoff(pr_node("sent"), machine)
+        self.assertEqual((status, machine.launches(), self.saved), (409, [], {}))
+        self.assertIn(other, message)
+        with mock.patch.object(reflex, "load_reflexes", return_value=records):  # a review there is fine
+            self.assertEqual(self.run_handoff(pr_node("review"), FakeMachine(author="alice", alive=(other,)))[0], 202)
+
+    def test_session_names_do_not_collide_after_cleanup(self):
+        self.assertNotEqual(reflex.session_name("foo/bar-baz", "1"), reflex.session_name("foo-bar/baz", "1"))
+        self.assertNotEqual(reflex.session_name("a/b.c", "1"), reflex.session_name("a/b-c", "1"))
+
+    def test_failed_restart_keeps_the_previous_runs_outcome(self):
+        old = {"tmux": reflex.session_name("o/r", "7"), "started": 100}
+        self.exits.joinpath(f"{old['tmux']}.100.exit").write_text("0\n")
+        machine = FakeMachine(author="me", tmux_rc=2)
+        status, _ = self.run_handoff(pr_node("sent"), machine)
+        self.assertEqual((status, self.saved), (500, {}))
+        with mock.patch.object(reflex, "EXIT_DIR", self.exits), mock.patch.object(reflex, "tmux_alive", return_value=False):
+            self.assertEqual(reflex.run_state(old), {"alive": False, "exit": 0})
 
     def test_my_pr_under_another_account_or_closed_or_unclaimed_starts_nothing(self):
         for machine in (FakeMachine(author="alice"), FakeMachine(author="me", profile=""),

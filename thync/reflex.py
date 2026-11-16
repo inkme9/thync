@@ -4,6 +4,7 @@ Someone else's PR -> /concord:review-until-approve, my PR -> /concord:pr-to-merg
 interactive Claude Code session in tmux, in a local clone of the PR's repository, as the mien profile that claims the
 clone. plan_reflex() checks everything and starts nothing; start_reflex() checks again and starts the session.
 """
+import hashlib
 import json
 import re
 import shlex
@@ -15,7 +16,7 @@ from pathlib import Path
 from .config import COMPANY_ROOTS, HOME, STATE_DIR
 from .sources.claude_code import known_sessions, repo_of
 from .sources.github import canonical_slug
-from .store import save_reflex
+from .store import load_reflexes, save_reflex
 
 WORKFLOW = {"review": "concord:review-until-approve", "sent": "concord:pr-to-merge"}
 PLUGIN_CACHE = HOME / ".claude" / "plugins" / "cache"
@@ -41,18 +42,29 @@ def tmux_alive(name: str) -> bool:
     return alive
 
 
-def exit_code(name: str) -> int | None:
-    """The exit code the session's shell wrote when Claude Code ended, or None when it has not ended or wrote none."""
-    try:
-        return int((EXIT_DIR / f"{name}.exit").read_text().strip())
-    except (OSError, ValueError):
-        return None
+def session_name(slug: str, number: str) -> str:
+    """One tmux session per PR. The hash keeps foo/bar-baz#1 and foo-bar/baz#1 apart after the cleanup."""
+    owner, repo = slug.split("/")
+    digest = hashlib.sha1(slug.lower().encode()).hexdigest()[:6]
+    return re.sub(r"[^A-Za-z0-9_-]", "-", f"thync-{owner}-{repo}-{number}-{digest}")
+
+
+def exit_file(record: dict) -> Path:
+    """Where the session's shell writes Claude Code's exit code. One file per start, so a failed restart leaves the
+    previous run's code in place."""
+    return EXIT_DIR / f"{record['tmux']}.{record['started']}.exit"
 
 
 def run_state(record: dict) -> dict:
-    """{"alive": bool, "exit": int | None} of a handed-off session on this machine."""
+    """{"alive": bool, "exit": int | None} of a handed-off session on this machine; exit is None until it ends."""
     alive = tmux_alive(record["tmux"])
-    return {"alive": alive, "exit": None if alive else exit_code(record["tmux"])}
+    code = None
+    if not alive:
+        try:
+            code = int(exit_file(record).read_text().strip())
+        except (OSError, ValueError, KeyError):
+            pass
+    return {"alive": alive, "exit": code}
 
 
 def origin_matches(path: str, slug: str) -> bool:
@@ -93,6 +105,9 @@ def plan_reflex(node: dict) -> tuple[int, dict]:
         return 400, {"message": "리뷰 요청이나 내 PR 만 맡길 수 있어요"}
     owner, repo, number = m.groups()
     slug, url, skill = f"{owner}/{repo}", m.group(0), WORKFLOW[role]
+    name = session_name(slug, number)
+    if tmux_alive(name):  # before anything else, so a running session always answers with where to find it
+        return 409, {"message": f"이미 돌고 있어요 (tmux attach -t {name})"}
     missing = [b for b in ("claude", "tmux", "gh") if not shutil.which(b)]
     if missing:
         return 503, {"message": f"이 머신에 {', '.join(missing)} 가 없어요"}
@@ -101,13 +116,19 @@ def plan_reflex(node: dict) -> tuple[int, dict]:
     clone = find_clone(slug, repo)
     if not clone:
         return 404, {"message": f"이 머신에서 {slug} 저장소 폴더를 찾지 못했어요"}
+    if role == "sent":
+        # pr-to-merge edits and switches branches in the clone; two of them would fight over one working tree.
+        busy = next((r["tmux"] for u, r in load_reflexes().items() if u != url and r.get("cwd") == clone
+                     and r.get("skill") == skill and "tmux" in r and tmux_alive(r["tmux"])), None)
+        if busy:
+            return 409, {"message": f"{clone} 에서 다른 PR 의 pr-to-merge 가 돌고 있어요 (tmux attach -t {busy})"}
     profile, prefix = "", []
     if shutil.which("mien"):
         out = subprocess.run(["mien", "which"], cwd=clone, capture_output=True, text=True, timeout=30)
         profile = out.stdout.strip().splitlines()[-1] if out.returncode == 0 and out.stdout.strip() else ""
         if not profile:
             return 409, {"message": f"{clone} 를 맡은 mien 프로필이 없어요 (mien claim <프로필>)"}
-        prefix = ["mien", "exec", profile]
+        prefix = ["mien", "exec", profile, "--"]
     try:
         login = _run([*prefix, "gh", "api", "user", "--jq", ".login"], clone)
         pr = json.loads(_run([*prefix, "gh", "api", f"repos/{slug}/pulls/{number}", "--jq",
@@ -124,7 +145,7 @@ def plan_reflex(node: dict) -> tuple[int, dict]:
     if role == "review" and mine:
         return 409, {"message": f"{slug}#{number} 는 실행 계정({login})이 쓴 PR 이라 리뷰를 맡길 수 없어요"}
     return 200, {"url": url, "slug": slug, "number": int(number), "workflow": skill, "profile": profile,
-                 "login": login, "author": pr.get("author", ""), "cwd": clone}
+                 "login": login, "author": pr.get("author", ""), "cwd": clone, "tmux": name}
 
 
 def prompt_of(plan: dict) -> str:
@@ -145,19 +166,17 @@ def start_reflex(node: dict, shown: dict | None = None) -> tuple[int, str]:
     status, plan = plan_reflex(node)
     if status != 200:
         return status, plan["message"]
-    if shown is not None and any(shown.get(k) != plan[k] for k in ("url", "workflow", "profile", "login")):
-        return 409, "확인 창을 연 뒤 실행 계정이나 작업이 바뀌었어요. 다시 맡겨 주세요"
-    owner, repo = plan["slug"].split("/")
-    name = re.sub(r"[^A-Za-z0-9_-]", "-", f"thync-{owner}-{repo}-{plan['number']}")
-    exit_file = EXIT_DIR / f"{name}.exit"
-    # Absolute paths: the tmux server may have been started with another PATH.
-    prefix = [shutil.which("mien") or "mien", "exec", plan["profile"]] if plan["profile"] else []
+    if shown is not None and any(shown.get(k) != plan[k] for k in ("url", "workflow", "profile", "login", "cwd")):
+        return 409, "확인 창을 연 뒤 실행 계정, 작업이나 폴더가 바뀌었어요. 다시 맡겨 주세요"
+    name = plan["tmux"]
+    record = {"tmux": name, "skill": plan["workflow"], "cwd": plan["cwd"], "profile": plan["profile"],
+              "login": plan["login"], "started": int(time.time())}
+    # Absolute paths: the tmux server may have been started with another PATH. mien exec drops the first `--`,
+    # so its own `--` keeps the one before the prompt for claude.
+    prefix = [shutil.which("mien") or "mien", "exec", plan["profile"], "--"] if plan["profile"] else []
     argv = [*prefix, shutil.which("claude") or "claude", *PERMISSIONS, "--", prompt_of(plan)]
-    command = f"{shlex.join(argv)}; echo $? > {shlex.quote(str(exit_file))}"
-    if tmux_alive(name):
-        return 409, f"이미 돌고 있어요 (tmux attach -t {name})"
+    command = f"{shlex.join(argv)}; echo $? > {shlex.quote(str(exit_file(record)))}"
     EXIT_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-    exit_file.unlink(missing_ok=True)
     # new-session itself refuses a duplicate name, so there is no check-then-create race.
     try:
         out = subprocess.run(["tmux", "new-session", "-d", "-s", name, "-c", plan["cwd"], command],
@@ -169,6 +188,5 @@ def start_reflex(node: dict, shown: dict | None = None) -> tuple[int, str]:
             return 409, f"이미 돌고 있어요 (tmux attach -t {name})"
         return 500, f"tmux 를 실행하지 못했어요 ({out.stderr.strip()[:200]})"
     _tmux_cache.pop(name, None)
-    save_reflex(plan["url"], {"tmux": name, "skill": plan["workflow"], "cwd": plan["cwd"], "profile": plan["profile"],
-                              "login": plan["login"], "started": int(time.time())})
+    save_reflex(plan["url"], record)
     return 202, f"{plan['workflow']} 를 시작했어요 (tmux attach -t {name})"

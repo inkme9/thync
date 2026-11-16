@@ -52,7 +52,7 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 | `names.json` | 화면에서 바꾼 노드 이름 |
 | `cards/*.md` | 칸반 카드 ([파일 형식](usage.md#칸반-카드-파일)) |
 | `reflex.json` | Claude에게 맡긴 PR: tmux 세션 이름, 작업, 실행 계정과 프로필, 클론 경로, 시작 시각 |
-| `handoff/` | 맡긴 세션이 끝날 때 쓰는 종료 코드 파일 (`<세션 이름>.exit`) |
+| `handoff/` | 맡긴 세션이 끝날 때 쓰는 종료 코드 파일 (`<세션 이름>.<시작 시각>.exit`) |
 
 ## 여러 서버를 한 화면에서
 
@@ -83,7 +83,7 @@ flowchart LR
 
 - **프로필**: 다른 서버의 세션이 회사인지 개인인지는 그 서버의 `company_roots`로 정합니다. 허브의 `company_roots`는 허브 자신의 세션에만 씁니다.
 - **선택 대기 질문**: 화면에서 고른 답은 그 세션이 있는 서버의 thync 로 넘어갑니다. 그 서버에 질문 hook 이 등록되어 있어야 합니다([사용법](usage.md#선택-대기-질문에-thync-에서-답하기-pretooluse-hook)).
-- **PR 맡기기**: `reflex_host`를 주면 확인과 시작 요청 모두 그 서버로 한 번 넘기고, 클론·실행 계정·tmux 는 그 서버의 것을 씁니다. 그 서버에 연결되지 않으면 허브에서 대신 실행하지 않습니다. 칸반의 맡긴 일 카드에는 `ssh -t <호스트> tmux attach -t <이름>`이 보입니다.
+- **PR 맡기기**: `reflex_host`를 주면 확인과 시작 요청 모두 그 서버로 한 번 넘기고, 클론·실행 계정·tmux 는 그 서버의 것을 씁니다. 그 서버에 연결되지 않거나 넘기다 실패하면 허브에서 대신 실행하지 않습니다. 칸반의 맡긴 일 카드에는 `ssh -t <호스트> tmux attach -t <이름>`이 보입니다.
 - **GitHub·Jira·Notion·칸반·이름 바꾸기**: 허브의 설정과 `~/.thync`를 씁니다. 서버의 thync 가 이 출처를 켜 두어도 허브는 세션만 가져오므로 중복되지 않습니다.
 - **허브 자신의 세션**: 허브 머신의 Claude Code 세션도 `sources`에 `claude_code`가 있으면 함께 보입니다.
 

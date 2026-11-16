@@ -13,8 +13,8 @@ import type { ApiNode } from "./types.ts";
 interface Plan { url: string; slug: string; number: number; workflow: string; profile: string; login: string; author: string; cwd: string; host?: string }
 
 const EFFECTS: Record<string, string> = {
-  "concord:review-until-approve": "리뷰를 게시하고, 막는 지적이 없는 라운드에서 이 계정으로 승인해요. 작성자의 push 와 답글을 기다리며 라운드를 되풀이해요. 처음 한 번은 세션에 들어가(tmux attach) 이 PR 을 믿는다고 직접 말해야 Claude 리뷰어가 돌아요.",
-  "concord:pr-to-merge": "이 PR 에 달린 리뷰를 고쳐 커밋·push 하고 답글을 달아요. 자동 리뷰어 스레드를 resolve 하고, 리뷰어에게 다시 리뷰를 요청하고, 필요하면 PR 본문을 고쳐요. 기본 브랜치보다 뒤처지면 브랜치를 갱신하고, 병합 조건을 채우면 이 PR 하나만 병합해요. 병합 뒤에는 실패한 작업을 한 번 다시 돌리고 이 PR 이 가리키는 티켓의 상태를 바꾸고 댓글을 달아요. 시작을 누르면 이 PR 의 병합을 허락하는 거예요.",
+  "concord:review-until-approve": "리뷰를 게시하고, 막는 지적이 없는 라운드에서 이 계정으로 승인해요. 작성자의 push 와 답글을 기다리며 라운드를 되풀이해요. 처음 한 번은 세션에 들어가(tmux attach) 이 PR 을 믿는다고 직접 써야 Claude 리뷰어가 돌아요.",
+  "concord:pr-to-merge": "이 PR 에 달린 리뷰를 고쳐 커밋·push 하고 답글을 달아요. 자동 리뷰어 스레드를 resolve 하고, 리뷰어에게 다시 리뷰를 요청하고, 필요하면 PR 본문을 고쳐요. 기본 브랜치보다 뒤처지면 브랜치를 갱신하고, 실패한 필수 검사를 한 번 다시 돌리고, 병합 조건을 채우면 이 PR 하나만 병합해요. 병합 뒤에는 실패한 작업을 한 번 다시 돌리고 이 PR 이 가리키는 티켓의 상태를 바꾸고 댓글을 달아요. 시작을 누르면 이 PR 의 병합을 허락하는 거예요.",
 };
 const COMMON = "세션은 PR 저장소의 로컬 폴더에서 tmux 안의 Claude Code 로 auto 권한으로 돌아요. force push 와 기본 브랜치 직접 push 는 하지 않아요.";
 
