@@ -49,14 +49,14 @@
 ### 세는 세션
 
 - 다른 Codex 스레드가 띄운 하위 세션은 지금처럼 세지 않습니다. 첫 `session_meta`의 `source`가 객체이거나 `thread_source`가 `"subagent"`이면 하위 세션입니다. `source`가 문자열인 하위 세션도 있기 때문입니다.
-- `session_meta`는 첫 줄만 씁니다. 부모 스레드에서 갈라진 하위 세션의 로그는 자기 `session_meta` 뒤에 부모의 `session_meta`와 부모의 대화를 복사해 둡니다. 뒤의 `session_meta`를 쓰면 하위 세션이 부모의 id를 가진 일반 세션이 되고, 부모의 프롬프트가 한 번 더 세어집니다.
+- 로그에서 처음 나온 `session_meta` 줄만 씁니다. 처음 나온 `session_meta`를 읽지 못하면(객체가 아닌 `payload` 등) 그 로그를 하위 세션처럼 숨깁니다. 뒤의 복사본을 쓰는 것보다 숨기는 쪽이 부모 세션과 섞이지 않습니다. 부모 스레드에서 갈라진 하위 세션의 로그는 자기 `session_meta` 뒤에 부모의 `session_meta`와 부모의 대화를 복사해 둡니다. 뒤의 `session_meta`를 쓰면 하위 세션이 부모의 id를 가진 일반 세션이 되고, 부모의 프롬프트가 한 번 더 세어집니다.
 - `codex exec`로 실행한 세션(`session_meta.source`가 `"exec"`)은 일반 세션으로 셉니다. Claude Code의 `claude -p` 실행을 세는 것과 같습니다.
 
 ## 치르는 비용
 
 - 사용자가 `<`나 `#`으로 시작하는 글(HTML 조각, Markdown 제목)을 `## My request` 제목 없이 바로 보내면 프롬프트로 세지 않습니다. 그 메시지만 있는 세션은 그래프에 나오지 않습니다.
 - `codex exec` 실행이 세션마다 그래프에 나옵니다. 위의 7일 로그 236개에서 Codex 세션 144개가 나왔고 그 가운데 132개가 `exec`였습니다. 다른 도구가 띄운 실행이 많으면 그래프가 붐빕니다.
-- 파일만 첨부하거나 응답 주석만 단 차례는 프롬프트가 되지 않으므로 그 차례의 활동 기록과 `last_at`도 생기지 않습니다. 위의 로그에서 각각 4개, 6개였습니다.
+- 파일만 첨부하거나 응답 주석만 단 차례는 프롬프트가 되지 않으므로 그 차례의 활동 기록과 `last_at`도 생기지 않습니다. 위의 로그에서 차례 단위로 각각 2개, 6개였습니다. 파일 첨부와 질문에 대한 답만 있는 차례 1개는 따로 셌습니다.
 - 두 형식이 섞인 로그에서 한 형식의 줄이 빠지면, 그 뒤에 같은 글을 다시 친 입력 하나를 짝으로 보고 세지 않을 수 있습니다.
 
 ## 남는 위험
@@ -66,6 +66,8 @@
 - 읽지 못하는 줄(`content`가 목록이 아니거나 블록이 객체가 아닌 줄)은 `Session.update()`가 잡는 예외(`JSONDecodeError`, `AttributeError`, `TypeError`)로 건너뜁니다. 다른 예외를 내는 형식이 생기면 그 세션 읽기가 실패합니다.
 - `codex exec`를 세면서, 다른 프로그램이 쓴 프롬프트도 세션 제목, MCP 응답, `/sessions.json`에 들어갑니다. 이런 프롬프트에는 파일 내용이나 로그가 들어 있을 수 있습니다. `/sessions.json`은 접근 토큰이 있어야 읽을 수 있고(`thync/server.py`의 `authorized()`), 허브는 SSH로 각 서버의 토큰 파일을 읽어 이 요청에 씁니다(`thync/sources/remote.py`). MCP 서버는 같은 컴퓨터에서 실행됩니다.
 - 부모 스레드를 사용자가 갈라 만든 세션(`thread_source`가 `"user"`이고 `forked_from_id`가 있음, 위의 로그에서 5개)은 일반 세션으로 셉니다. 이 로그들은 `session_meta`가 한 줄이고, 부모 로그가 남아 있는 4개는 부모와 같은 프롬프트가 하나도 없었습니다. 형식이 바뀌어 부모의 대화를 복사하게 되면 그 프롬프트가 두 세션에 함께 들어갑니다.
+- 예전 형식의 `user_message`에는 2번 규칙을 쓰지 않으므로, 예전 Codex가 문맥을 `user_message`로 남겼다면 그 문맥이 프롬프트가 됩니다. 기준 4(예전 형식의 결과를 바꾸지 않음)를 지키기 위해 그대로 둡니다. 확인한 로그에는 예전 형식이 없었습니다.
+- `session_meta`보다 앞에 나온 줄은 일반 세션의 줄로 읽습니다. 확인한 로그는 모두 첫 줄이 `session_meta`였습니다.
 - 세션 제목은 바꾸지 않습니다. 현재 로그에는 `thread_name_updated`가 없어 Codex 세션의 제목은 마지막 프롬프트로 정해집니다.
 
 ## 상태가 바뀌는 경우
@@ -85,7 +87,8 @@
 | 바로 앞 프롬프트가 같은 줄 종류의 같은 글 | 같은 글을 다시 입력 | 프롬프트 하나 더 | introduced | `test_same_text_typed_twice_counts_twice` (두 형식 각각) |
 | 하위 세션(`source`가 객체) | 아무 줄 | 무시. 세션이 나오지 않음 | unchanged | `test_subagent_is_not_a_session_but_exec_is` |
 | 하위 세션(`source`가 문자열, `thread_source`가 `"subagent"`) | 아무 줄 | 무시. 세션이 나오지 않음 | introduced | `test_thread_source_subagent_with_a_string_source` |
-| 첫 `session_meta`를 읽음 | 두 번째 `session_meta`(갈라진 하위 세션의 부모 복사본) | 무시. id, `cwd`, 브랜치, 하위 세션 여부는 첫 줄의 값 그대로. 하위 세션이면 뒤의 복사된 프롬프트도 세지 않음 | introduced | `test_a_fork_keeps_its_own_session_meta` |
+| 처음 나온 `session_meta`를 읽음 | 두 번째 `session_meta`(갈라진 하위 세션의 부모 복사본) | 무시. id, `cwd`, 브랜치, 하위 세션 여부는 첫 줄의 값 그대로. 하위 세션이면 뒤의 복사된 프롬프트도 세지 않음 | introduced | `test_a_fork_keeps_its_own_session_meta` |
+| 처음 나온 `session_meta`를 읽지 못함 | 두 번째 `session_meta`와 사용자 글 | 하위 세션으로 보고 세지 않음 | introduced | `test_a_malformed_first_meta_does_not_adopt_the_copied_parent` |
 | `source`가 `"exec"` | 사용자 글 메시지 | 일반 세션으로 나옴 | introduced | `test_subagent_is_not_a_session_but_exec_is` |
 | 아무 상태 | `content`가 문자열, `text`가 없음·`null`, 블록이 객체가 아님, JSON이 아닌 줄 | 그 줄만 건너뛰고 다음 줄을 읽음 | introduced | `test_malformed_lines_are_skipped` |
 | 아무 상태 | 줄바꿈 없이 반쯤 쓴 마지막 줄 | 읽지 않고 남겨 두었다가, 줄이 끝난 뒤 다음 `update()`에서 읽음 | unchanged | `test_half_written_last_line_waits`, `Parsing.test_codex_log` |
