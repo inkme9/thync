@@ -84,12 +84,12 @@ class CodexPrompts(unittest.TestCase):
 
     def test_one_input_in_both_formats_counts_once(self):  # criterion 5, both orders
         for order in ("response_item first", "event_msg first"):
-            pair = [user(ts(50), "<environment_context>x</environment_context>"), user(ts(50), "fix"),
-                    legacy(ts(50), "fix")]
+            pair = [user(ts(50), "<environment_context>x</environment_context>"), user(ts(50), "fix\n  it"),
+                    legacy(ts(50), "fix\n  it")]
             if order == "event_msg first":
                 pair = [pair[2], pair[0], pair[1]]
             s = self.read([meta(), *pair, user(ts(40), "next"), legacy(ts(40), "next")])
-            self.assertEqual([p for _, p in s.prompts], ["fix", "next"], order)
+            self.assertEqual([p for _, p in s.prompts], ["fix it", "next"], order)
 
     def test_both_formats_split_across_reads(self):  # criterion 5, the two lines arrive in different update() calls
         path = self.write([meta(), user(ts(50), "fix")])
