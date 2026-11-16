@@ -239,26 +239,27 @@ export class BrainRenderer extends RenderCore {
   ): void {
     const isFocus = this.focusId && (edge.e.a === this.focusId || edge.e.b === this.focusId);
     const isHover = this.hoverId && (edge.e.a === this.hoverId || edge.e.b === this.hoverId);
-    const cA = this.lobeColor(edge.A._lobeName ?? "parietal", graph);
-    const cB = this.lobeColor(edge.B._lobeName ?? "parietal", graph);
     const lobeM = Math.max(lobeMul(edge.A._lobeName), lobeMul(edge.B._lobeName));
-    const interBoost = edge.sameLobe ? 1 : 1.6;
+    // thync: lines take their nodes' colors, brighten with the hotter end, and add up where they cross,
+    // so dense relations read as bright strands between clusters
+    const heat = Math.max(edge.A.glow ?? 0, edge.B.glow ?? 0);
     const baseA = (isFocus ? (isFar ? 0.55 : 0.85)
       : isHover ? (isFar ? 0.25 : 0.40)
-        : (isFar ? 0.05 : 0.13)) * lobeM * interBoost;
-    ctx.lineWidth = isFocus ? 1.3 : (isFar ? 0.55 : 0.7);
+        : (isFar ? 0.07 : 0.14) + heat * (isFar ? 0.18 : 0.32)) * lobeM;
+    ctx.lineWidth = isFocus ? 1.3 : (isFar ? 0.55 : 0.7) + heat * 0.5;
+    ctx.globalCompositeOperation = "lighter";
     for (let index = 0; index < edge.pts.length - 1; index += 1) {
       const p0 = edge.pts[index];
       const p1 = edge.pts[index + 1];
       const t = index / (edge.pts.length - 1);
       const alpha = baseA * (1 - ((p0.depth + p1.depth) / 2) * 0.35);
-      const color = edge.sameLobe ? cA : (t < 0.5 ? cA : cB);
-      ctx.strokeStyle = isFocus ? hexA(edge.A.color, alpha) : hexA(color, alpha);
+      ctx.strokeStyle = hexA(isFocus || t < 0.5 ? edge.A.color : edge.B.color, alpha);
       ctx.beginPath();
       ctx.moveTo(p0.sx, p0.sy);
       ctx.lineTo(p1.sx, p1.sy);
       ctx.stroke();
     }
+    ctx.globalCompositeOperation = "source-over";
   }
 
   private drawNode(

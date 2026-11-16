@@ -35,7 +35,11 @@ export function notableUnits(nodes: ApiNode[]): Set<string> {
     || (n.kind === "workThread" && n.detail.reflex)).map((n) => String(n.detail.unit)));
 }
 
-// Nodes that go on the brain: in-progress work of the selected tab. Repositories shared by several
+const inView = (n: ApiNode): boolean => inProfile(n.profile) && (state.showAll || Boolean(n.detail.live));
+
+// Work listed in the panel: in-progress work of the selected tab. Repositories shared by several
 // work units ("common") are left out.
-export const shown = (): ApiNode[] =>
-  state.data.nodes.filter((n) => n.detail.unit !== "common" && inProfile(n.profile) && (state.showAll || n.detail.live));
+export const shown = (): ApiNode[] => state.data.nodes.filter((n) => n.detail.unit !== "common" && inView(n));
+
+/** Nodes on the brain: the listed work plus shared repositories, which sit between the units they join. */
+export const onBrain = (): ApiNode[] => state.data.nodes.filter(inView);

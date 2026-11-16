@@ -23,6 +23,6 @@ thync에서 수정한 위치는 코드에 `thync:` 주석으로 표시했습니�
 
 | 파일 | 수정 내용 |
 | --- | --- |
-| [`src/renderer.ts`](src/renderer.ts) | 진행 중인 노드의 맥동과 후광, 더 밝은 뇌 윤곽 |
+| [`src/renderer.ts`](src/renderer.ts) | 진행 중인 노드의 맥동과 후광, 더 밝은 뇌 윤곽, 노드 색을 따르고 활성에 따라 밝아지며 겹치면 더해지는 연결선 |
 | [`src/cloud.ts`](src/cloud.ts), [`src/shape.ts`](src/shape.ts) | 뇌 표면 점 개수 1,400 → 2,600, 뇌간 아래의 짧은 척수 |
 | [`src/overlay-labels.ts`](src/overlay-labels.ts), [`src/types.ts`](src/types.ts) | 작업 단위 제목(`clusterTitles`)과 제목이 겹치지 않도록 위치 조정 |
