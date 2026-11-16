@@ -20,3 +20,13 @@ test("a repository in common sits between the units it joins; other common nodes
   assert.equal(g.idx["jira:X-1"], undefined);    // not a repository
   assert.deepEqual(g.adj["repo:shared"].sort(), ["a", "b"]);
 });
+
+test("with showLinked, nodes directly linked to in-progress work join the brain; others stay off", () => {
+  const past = (id: string): ApiNode => ({ ...node(id, "u2"), detail: { unit: "u2", live: false } });
+  state.data = { ...state.data, units: [unit("u1"), unit("u2")],
+    nodes: [node("a", "u1"), past("b"), past("c")], edges: [["a", "b"], ["b", "c"]] };
+  Object.assign(state, { showAll: false, showLinked: false });
+  assert.deepEqual(Object.keys(toGraph().idx), ["a"]);
+  state.showLinked = true;
+  assert.deepEqual(Object.keys(toGraph().idx).sort(), ["a", "b"]);
+});

@@ -115,7 +115,7 @@ Obsidian 노트 본문의 Jira 키는 작업 단위를 정하지 않고 티켓�
 | `reflex.ts` | Claude에게 맡기기 확인 창 |
 | `live.ts` | 실시간 활동 목록, 점화·두드러짐·되짚기 반응 |
 
-브라우저에 저장하는 값(`localStorage`의 `thync.*`)은 토큰, 탭, 기간, 지난 작업 보기, 보기 모드, 칸반 높이입니다.
+브라우저에 저장하는 값(`localStorage`의 `thync.*`)은 토큰, 탭, 기간, 지난 작업 보기, 이어진 것 보기, 보기 모드, 칸반 높이입니다.
 
 ## `GET /graph.json` (schema 1)
 

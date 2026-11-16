@@ -17,7 +17,7 @@ export function apply(): void {
   const d = state.data;
   // Which units carry a title is part of the shape: a unit gaining or losing focus re-lays the titles.
   const notable = notableUnits(shown());
-  const sig = [state.profile, state.showAll, state.days, d.units.map((u) => u.id).join(","), onBrain().map((n) => n.id).join(","), d.edges.map((e) => e.join(">")).join(","),
+  const sig = [state.profile, state.showAll, state.showLinked, state.days, d.units.map((u) => u.id).join(","), onBrain().map((n) => n.id).join(","), d.edges.map((e) => e.join(">")).join(","),
     [...notable].sort().join(",")].join("|");
   if (sig !== state.signature) {
     state.signature = sig;
@@ -118,13 +118,15 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-days]")) {
     void poll();
   };
 }
-const showAll = document.querySelector<HTMLInputElement>("#show-all")!;
-showAll.checked = state.showAll;
-showAll.onchange = () => {
-  state.showAll = showAll.checked;
-  remember("showAll", state.showAll ? "1" : "0");
-  apply();
-};
+for (const key of ["showAll", "showLinked"] as const) {
+  const box = document.querySelector<HTMLInputElement>(`#${key === "showAll" ? "show-all" : "show-linked"}`)!;
+  box.checked = state[key];
+  box.onchange = () => {
+    state[key] = box.checked;
+    remember(key, box.checked ? "1" : "0");
+    apply();
+  };
+}
 
 // The brain turns slowly when left alone; this button stops or restarts that, and the browser remembers it.
 const rotate = document.querySelector<HTMLButtonElement>("#rotate")!;

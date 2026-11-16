@@ -20,6 +20,7 @@ export const state = {
   signature: "",                             // when it changes, the graph is rebuilt from scratch
   days: Number(recall("days")) || 3,          // a short period keeps old work off the brain
   showAll: recall("showAll") === "1",        // also show work that is not in progress
+  showLinked: recall("showLinked") === "1",  // also show what in-progress work is directly linked to
   profile: recall("profile") || "전체",       // 전체 / 회사 / 개인 tab
 };
 
@@ -35,12 +36,29 @@ export function notableUnits(nodes: ApiNode[]): Set<string> {
     || (n.kind === "workThread" && n.detail.reflex)).map((n) => String(n.detail.unit)));
 }
 
-const inView = (n: ApiNode): boolean => inProfile(n.profile) && (state.showAll || Boolean(n.detail.live));
+// Which nodes the selected tab and toggles let through: in-progress work, plus either all past work
+// or only what in-progress work is directly linked to.
+function inView(): (n: ApiNode) => boolean {
+  const live = new Set(state.data.nodes.filter((n) => n.detail.live).map((n) => n.id));
+  const linked = new Set<string>();
+  if (state.showLinked && !state.showAll) {
+    for (const [a, b] of state.data.edges) {
+      if (live.has(a)) linked.add(b);
+      if (live.has(b)) linked.add(a);
+    }
+  }
+  return (n) => inProfile(n.profile) && (state.showAll || live.has(n.id) || linked.has(n.id));
+}
 
-// Work listed in the panel: in-progress work of the selected tab. Nodes without a work unit ("common") are left out.
-export const shown = (): ApiNode[] => state.data.nodes.filter((n) => n.detail.unit !== "common" && inView(n));
+// Work listed in the panel: the nodes in view of the selected tab. Nodes without a work unit ("common") are left out.
+export const shown = (): ApiNode[] => {
+  const view = inView();
+  return state.data.nodes.filter((n) => n.detail.unit !== "common" && view(n));
+};
 
 /** Nodes on the brain: the listed work plus repositories in "common", which sit between the units they join.
  * Other "common" nodes (a ticket only a review request title named) stay off. */
-export const onBrain = (): ApiNode[] =>
-  state.data.nodes.filter((n) => (n.detail.unit !== "common" || n.kind === "repo") && inView(n));
+export const onBrain = (): ApiNode[] => {
+  const view = inView();
+  return state.data.nodes.filter((n) => (n.detail.unit !== "common" || n.kind === "repo") && view(n));
+};
