@@ -33,6 +33,7 @@ let mood = "offline";
 let seenQuestions = new Set();
 let primed = false;         // no notifications for questions already waiting when the app starts
 let hubStarted = false;
+let statusError = "";  // why the last poll failed, shown on hover while offline
 let hovered = false, dragging = false, pausedUntil = 0;
 let pos = null, target = null, area = null;
 // Where the tail points: away from the way the cloud moves, eased so it swings instead of snapping.
@@ -51,8 +52,9 @@ let done = null;            // { session: last finished, more: how many others f
 async function poll() {
   try {
     status = await invoke("status");
-  } catch {
+  } catch (e) {
     status = null;
+    statusError = String(e);
     if (!hubStarted) { hubStarted = true; invoke("start_hub").catch(() => {}); }
   }
   const before = mood;
@@ -334,7 +336,7 @@ function drawBubble() {
     lines = [`✓ ${s.host || "이 Mac"} · ${s.title}`, done.more ? `외 ${done.more}개도 끝났어요` : "Claude 가 일을 마쳤어요",
       "눌러서 thync 열기"];
   } else if (hovered) {
-    lines = mood === "offline" ? ["thync 허브가 꺼져 있어요", "메뉴 막대에서 켤 수 있어요"]
+    lines = mood === "offline" ? ["thync 허브에 연결하지 못했어요", ...(statusError ? [statusError] : []), "메뉴 막대에서 켤 수 있어요"]
       : [`집중 ${status.focus} · Claude 작업 ${status.working} · 리뷰 ${status.reviews}`,
         ...(status.hosts || []).map((h) => `${h.name} ${h.ok ? "연결됨" : "끊김"}`), "눌러서 thync 열기"];
   }

@@ -1,7 +1,7 @@
 """Brightness and state rules taken from research on attention and memory (docs/brain-model.md).
 
 Activity sources are nodes with `last_at`: sessions (last prompt), and without session logs also branches and
-tickets (last commit), my tickets (last update) and Notion pages (last edit).
+tickets (last commit), my tickets (last update), Notion pages and Obsidian notes (last edit).
 
 1. Memory strength: a source fades after its last activity as a sum of a fast and a slow exponential.
 2. Competition: the work unit of the most recent activity pulls from the top down, recency pushes from the

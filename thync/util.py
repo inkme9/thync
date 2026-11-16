@@ -9,6 +9,18 @@ from datetime import datetime
 from pathlib import Path
 
 
+BOARD_CARD = "obsidian-card:"  # id prefix of a card read from the Obsidian Kanban board; thync never writes one
+KANBAN_KEY = re.compile(r"^kanban-plugin[ \t]*:", re.M)
+FRONT_MATTER = re.compile(r"\A---[ \t]*\n(.*?)^---[ \t]*$", re.S | re.M)
+
+
+def is_kanban(text: str) -> bool:
+    """Whether a Markdown file is a board of the Obsidian Kanban plugin: its front matter has a `kanban-plugin`
+    key. The board reader and the card-file reader both ask here, so no file is a board to one and a card to the other."""
+    front = FRONT_MATTER.match(text.lstrip("\ufeff").replace("\r\n", "\n"))
+    return bool(front and KANBAN_KEY.search(front.group(1)))
+
+
 def epoch(ts: str) -> float:
     """ISO-8601 UTC timestamp ('2026-10-22T10:04:48.123Z') -> seconds since the epoch. 0.0 if unparsable."""
     try:

@@ -1,8 +1,9 @@
 """Build the graph the web page draws (GET /graph.json).
 
-Nodes are sessions, repositories, branches, Jira tickets, PRs, Notion pages and recently edited files. Each node
-belongs to a work unit: a Jira epic or ticket, else a branch, else a repository, else the session or Notion page.
-Activity sources carry `last_at` (last prompt, commit, ticket update or page edit); model.think() lights the rest.
+Nodes are sessions, repositories, branches, Jira tickets, PRs, Notion pages, Obsidian notes and their shared tags,
+and recently edited files. Each node belongs to a work unit: a Jira epic or ticket, else a branch, else a
+repository, else the session, Notion page or Obsidian note.
+Activity sources carry `last_at` (last prompt, commit, ticket update, page or note edit); model.think() lights the rest.
 """
 import time
 from pathlib import Path
@@ -12,7 +13,7 @@ from .config import (ACTIVITY_SEC, BACKGROUND_SEC, DEFAULT_DAYS, FILES_PER_SESSI
                      JIRA_DONE, JIRA_TODO, LIVE_FILE_SEC, LIVE_SESSION_SEC, PROFILE_PERSONAL, PROFILE_WORK, PRS_PER_SESSION,
                      RUNNING_STALE_SEC, COMPANY_ROOTS, SESSIONS, SOURCES)
 from .reflex import WORKFLOW
-from .sources import github, notion, remote
+from .sources import github, notion, obsidian, remote
 from .sources.claude_code import load_sessions, repo_of
 from .sources.jira import BRANCH_KEY, TITLE_KEY, Jira
 from .store import load_names, load_reflexes, read_cards
@@ -322,6 +323,52 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
         if "unit" not in nodes[pid]["detail"]:
             keys = TITLE_KEY.findall(pr["title"])
             nodes[pid]["detail"]["unit"] = next((jira.unit_of(k)[0] for k in keys if jira.unit_of(k)[0] in units), "sent")
+
+    # Obsidian notes edited recently (docs/design/obsidian-source.md). They come after every other source, so a
+    # PR or ticket node that exists already only gains an edge and keeps its kind, profile, details and unit.
+    notes = [n for n in (obsidian.recent_notes(now) if "obsidian" in SOURCES else []) if now - n["at"] <= window]
+    by_name: dict[tuple[str, str], list[str]] = {}  # (vault, lowercased title) -> notes, for [[links]]
+    by_tag: dict[tuple[str, str], list[tuple[str, str, str]]] = {}  # (vault, tag) -> (note, unit, profile)
+    for n in notes:
+        nid, title, profile = f"obsidian:{n['vault']}:{n['rel']}", n["title"], n["profile"]
+        # A key in the title puts the note in that ticket's unit, like a Notion page. A key in the body only
+        # links: a colleague's ticket in my meeting notes is not my work.
+        tkeys = [k for k in TITLE_KEY.findall(title) if k.split("-")[0] in prefixes]
+        bkeys = [k for k in n["keys"] if k.split("-")[0] in prefixes and k not in tkeys][:obsidian.PER_NOTE]
+        ukey, uname = unit_of(tkeys, "", "", (nid, title), title)
+        ukey = moved.get(ukey, ukey)
+        unit(ukey, uname, title, PROFILE_WORK if tkeys else profile, n["at"], tkeys)
+        touch(node(nid, title, "dailyNote", profile, kind_label="Obsidian 노트", text=title, url=n["url"]), n["at"], ukey)
+        for k in tkeys + bkeys:
+            if f"jira:{k}" not in nodes:
+                # A ticket only the body names is drawn with the note but marked a mention, so that its Jira
+                # status does not set the column and tags of the note's card (board.py).
+                ticket(k, PROFILE_WORK, unit=ukey, **({} if k in tkeys else {"mention": True}))
+            elif k in tkeys:
+                # A ticket a review request's title made has no unit yet, and one an earlier note only mentioned
+                # sits in that note's unit: either way it belongs to the unit its key names.
+                d = nodes[f"jira:{k}"]["detail"]
+                if d.pop("mention", False) or "unit" not in d:
+                    d["unit"] = ukey
+            edge(nid, f"jira:{k}")
+        for url, repo, num in n["prs"]:
+            if f"pr:{url}" not in nodes:
+                node(f"pr:{url}", f"{repo} #{num}", "source", profile, kind_label="PR", url=url, repo=repo, unit=ukey)
+            edge(nid, f"pr:{url}")
+        by_name.setdefault((n["vault"], obsidian.fold(title)), []).append(nid)
+        for t in n["tags"]:
+            by_tag.setdefault((n["vault"], t), []).append((nid, ukey, profile))
+        feed(n["at"], "obsidian", title, nid, title, profile)
+    for n in notes:
+        for target in n["links"]:
+            for other in by_name.get((n["vault"], target), []):
+                edge(f"obsidian:{n['vault']}:{n['rel']}", other)
+    for (vault, t), members in by_tag.items():
+        if len(members) > 1:  # a tag only one note carries says nothing about how notes relate
+            tid = node(f"obsidian-tag:{vault}:{t}", f"#{t}", "concept", members[0][2], kind_label="Obsidian 태그",
+                       unit=members[0][1])
+            for nid, _, _ in members:
+                edge(nid, tid)
 
     # Repositories shared by several units go to "common"; review requests join the unit of their ticket.
     for n in nodes.values():

@@ -4,18 +4,24 @@ Columns: waiting (a session waits on my answer), todo, doing (including work Cla
 handed off to Claude), done. A column set by hand in the
 card's Markdown file wins over the automatic one, which stays in `auto_column` so it can be restored.
 """
-from .config import HANDOFF, JIRA_DONE, JIRA_TODO, PROFILE_PERSONAL, PROFILE_WORK
+from .config import HANDOFF, JIRA_DONE, JIRA_TODO, PROFILE_PERSONAL, PROFILE_WORK, SOURCES
 from .reflex import run_state
-from .sources import remote
+from .sources import obsidian, remote
 from .store import BOARD_COLUMNS, load_reflexes
+from .util import BOARD_CARD
 
+
+
+def _own_ticket(n: dict) -> bool:
+    """A ticket that is this unit's work. One an Obsidian note only mentions is drawn in the unit but is not."""
+    return n["kind"] == "project" and not n["detail"].get("mention")
 
 
 def _auto_column(members: list[dict]) -> str:
     if any(n["detail"].get("waiting") for n in members):
         return "waiting"
     sources = [n for n in members if "last_at" in n["detail"]]
-    statuses = {n["detail"].get("jira_status", "").lower() for n in members if n["kind"] == "project"} - {""}
+    statuses = {n["detail"].get("jira_status", "").lower() for n in members if _own_ticket(n)} - {""}
     if any("focus" in n["roles"] or "running" in n["roles"] or n["detail"]["live"] for n in sources):
         return "doing"
     if any("review" in n["roles"] or "sent" in n["roles"] for n in members):
@@ -60,7 +66,7 @@ def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list
                               "tags": [n["name"], "리뷰 요청" if review else n["detail"].get("review_state", "")]})
             continue
         sessions = [n for n in members if n["kind"] == "workThread"]
-        tickets = [n for n in members if n["kind"] == "project"]
+        tickets = [n for n in members if _own_ticket(n)]
         lead = max((n for n in members if "last_at" in n["detail"]), key=lambda n: n["detail"]["last_at"], default=None)
         tags = [t["detail"].get("key", "") for t in tickets][:3]
         tags += [f"세션 {len(sessions)}"] if sessions else []
@@ -107,7 +113,7 @@ def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list
     # Card files with no automatic card are cards made by hand.
     auto_ids = {c["id"] for c in cards}
     for cid, f in card_files.items():
-        if cid in auto_ids:
+        if cid in auto_ids or cid.startswith(BOARD_CARD):  # a card file never stands in for a board card
             continue
         meta = f["meta"]
         column = meta.get("column") if meta.get("column") in BOARD_COLUMNS else "todo"
@@ -115,4 +121,8 @@ def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list
                       "auto_column": column, "moved": False, "note": f["note"],
                       "profile": meta.get("profile", PROFILE_PERSONAL), "updated": int(f["path"].stat().st_mtime),
                       "focus": "", "tags": ["직접 추가"], "file": str(f["path"])})
+
+    # Cards of the Obsidian Kanban board, read-only. They come last, so no card file above is applied to them.
+    if "obsidian" in SOURCES:
+        cards += obsidian.board_cards()
     return cards

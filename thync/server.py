@@ -4,14 +4,18 @@
 answers to a remote session's question and, with `reflex_host`, PR hand-offs are forwarded to that machine.
 
 Binds to 127.0.0.1 only. Data and writes also require the X-Thync-Token header, because on a shared
-machine other local users can reach 127.0.0.1 too. The static page holds no data and needs no token.
+machine other local users can reach 127.0.0.1 too, and with `tailscale serve` so can every tailnet device the
+tailnet's access rules let in. A login listed in `tailscale_users` needs no token: `tailscale serve` names it in
+Tailscale-User-Login. The static page holds no data and needs no token.
 """
+import email.header
 import gzip
 import hmac
 import json
 import os
 import re
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -22,16 +26,18 @@ from urllib.parse import parse_qs, urlparse, urlsplit
 
 from . import ask
 from .config import (DEFAULT_DAYS, HANDOFF, HOST, MAX_DAYS, PORT, PROFILE_PERSONAL, PROFILE_WORK, REFLEX_HOST, REMOTES,
-                     SESSIONS, SOURCES, STATE_DIR, WEB_DIR)
+                     SESSIONS, SOURCES, STATE_DIR, TAILSCALE_USERS, WEB_DIR)
 from .export import snapshot
 from .graph import build_graph
 from .reflex import plan_reflex, start_reflex
-from .sources import github, jira, notion, remote
+from .sources import github, jira, notion, obsidian, remote
 from .sources.claude_code import load_sessions, questions_of
 from .store import BOARD_COLUMNS, load_token, save_card, save_name
+from .util import BOARD_CARD
 
 TOKEN = ""
 REFLEX_FORWARD_SEC = 300  # longer than the far end's own checks can take
+TAILSCALE_NAME = ""  # this machine's MagicDNS name, set at start when `tailscale_users` is not empty
 
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -49,8 +55,12 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(WEB_DIR), **kwargs)
 
     def local_host(self) -> bool:
-        """Reject other Host names (DNS rebinding). The port is free because SSH may forward from any port."""
-        if urlsplit("//" + self.headers.get("Host", "")).hostname in LOCAL_HOSTS:
+        """Reject other Host names (DNS rebinding). The port is free because SSH may forward from any port.
+        `*.ts.net` is let through for `tailscale serve`. Public DNS for that domain is Tailscale's, but a hostile
+        resolver (an untrusted Wi-Fi network) can still rebind such a name, so there the token, or the narrower
+        checks of from_tailscale_page(), is what protects data."""
+        host = urlsplit("//" + self.headers.get("Host", "")).hostname or ""
+        if host in LOCAL_HOSTS or host.endswith(".ts.net"):
             return True
         self.send_error(403, "bad host")
         return False
@@ -59,8 +69,27 @@ class Handler(SimpleHTTPRequestHandler):
         sent = self.headers.get("X-Thync-Token", "").encode()
         if TOKEN and hmac.compare_digest(sent, TOKEN.encode()):
             return True
+        if TAILSCALE_USERS and self.tailscale_login() in TAILSCALE_USERS and self.from_tailscale_page():
+            return True
         self.send_error(401, "token required")
         return False
+
+    def from_tailscale_page(self) -> bool:
+        """Sent by thync's own page at this machine's MagicDNS name. X-Thync-Token, even empty, is a header a page
+        of another site cannot send without a CORS preflight, which this server never grants: that stops CSRF.
+        The exact name stops DNS rebinding, because a device that runs Tailscale with its DNS settings answers that
+        name itself."""
+        host = urlsplit("//" + self.headers.get("Host", "")).hostname or ""
+        name = tailscale_name()
+        return bool(name) and host == name and "X-Thync-Token" in self.headers
+
+    def tailscale_login(self) -> str:
+        """Tailscale-User-Login as `tailscale serve` sends it: RFC 2047 encoded when it is not ASCII."""
+        raw = self.headers.get("Tailscale-User-Login", "")
+        try:
+            return str(email.header.make_header(email.header.decode_header(raw))).strip().casefold()
+        except (ValueError, LookupError, UnicodeDecodeError):
+            return ""
 
     def forwarded(self) -> bool:
         """Sent on by a hub thync (sources/remote.py): handle it here, never forward it again."""
@@ -271,7 +300,7 @@ class Handler(SimpleHTTPRequestHandler):
         body = self.read_body(8192)
         # A new card gets a fresh id and is saved as a hand-made card.
         cid = f"manual:{int(time.time() * 1000)}{secrets.token_hex(2)}" if body.get("new") else " ".join(str(body["id"]).split())
-        if not cid or len(cid) > 500:
+        if not cid or len(cid) > 500 or cid.startswith(BOARD_CARD):  # Obsidian board cards are read-only
             raise ValueError("bad id")
         change = {"reset": bool(body.get("reset"))}
         if "column" in body:
@@ -292,7 +321,7 @@ class Handler(SimpleHTTPRequestHandler):
     def post_rename(self):
         body = self.read_body(4096)
         nid, name = " ".join(str(body["id"]).split()), " ".join(str(body.get("name", "")).split())
-        if not nid or len(nid) > 500 or len(name) > 120:
+        if not nid or len(nid) > 500 or len(name) > 120 or nid.startswith(BOARD_CARD):
             raise ValueError("bad id or name")
         save_name(nid, name)
         self.send_response(204)
@@ -335,11 +364,38 @@ def session_state(n: dict) -> dict:
             "background": "running" in n["roles"]}
 
 
+# An app started from the macOS GUI has no /usr/local/bin on PATH, so the app bundle's CLI is the fallback.
+TAILSCALE_CLI = shutil.which("tailscale") or "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+_name_tried = 0.0
+
+
+def own_tailscale_name() -> str:
+    """This machine's MagicDNS name (mini.tail1234.ts.net); "" when the tailscale CLI cannot tell."""
+    try:
+        out = subprocess.run([TAILSCALE_CLI, "status", "--json"], capture_output=True, text=True, timeout=10)
+        return str(json.loads(out.stdout)["Self"]["DNSName"]).rstrip(".").casefold()
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        return ""
+
+
+def tailscale_name() -> str:
+    """TAILSCALE_NAME, looked up again at most once a minute while it is empty: Tailscale may come up after thync."""
+    global TAILSCALE_NAME, _name_tried
+    if TAILSCALE_USERS and not TAILSCALE_NAME and time.monotonic() - _name_tried > 60:
+        _name_tried = time.monotonic()
+        TAILSCALE_NAME = own_tailscale_name()
+    return TAILSCALE_NAME
+
+
 def main() -> None:
-    global TOKEN
+    global TOKEN, TAILSCALE_NAME, _name_tried
     os.umask(0o077)
     TOKEN = load_token()
-    print(f"thync: http://{HOST}:{PORT}/  (first time: append #t=<contents of {STATE_DIR / 'token'}>)", flush=True)
+    if TAILSCALE_USERS:
+        TAILSCALE_NAME, _name_tried = own_tailscale_name(), time.monotonic()
+        print(f"thync: tailscale_users open https://{TAILSCALE_NAME}/ without the token" if TAILSCALE_NAME
+              else "thync: tailscale_users waits for `tailscale status` to name this machine", flush=True)
+    print(f"thync: http://{HOST}:{PORT}/  (first time: enter the contents of {STATE_DIR / 'token'} on the page)", flush=True)
     # Exit through atexit on kill/pkill too, so the SSH tunnels to remotes close with the server.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     if REMOTES:
@@ -349,6 +405,8 @@ def main() -> None:
         threading.Thread(target=github.refresh_forever, daemon=True).start()
     if "notion" in SOURCES:
         threading.Thread(target=notion.refresh_forever, daemon=True).start()
+    if "obsidian" in SOURCES:
+        obsidian.start()
     threading.Thread(target=jira.refresh_forever, daemon=True).start()  # summaries of keys seen anywhere
     if SESSIONS:
         load_sessions(time.time(), MAX_DAYS * 86400)  # read logs up front so the first page load does not wait

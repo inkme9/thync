@@ -9,8 +9,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from thync import graph, store, util
-from thync.sources import github, jira
+os.environ["THYNC_HOME"] = tempfile.mkdtemp()  # even when the shell sets it: tests delete card files
+
+from thync import graph, store, util  # noqa: E402
+from thync.sources import github, jira  # noqa: E402
 
 
 class FixesTest(unittest.TestCase):

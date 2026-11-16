@@ -18,6 +18,8 @@ export interface ApiUnit {
 export interface ApiCard {
   id: string; title: string; sub?: string; column: string; auto_column: string; moved: boolean; note: string; file: string;
   profile: string; updated: string | number; focus: string; tags: string[];
+  /** A card of the Obsidian Kanban board: moved and edited in Obsidian, and a click opens `url` there. */
+  readonly?: boolean; url?: string;
 }
 export interface ApiGraph {
   schema: number; board: ApiCard[]; generated: number; focus_level: number; handoff: boolean; units: ApiUnit[]; nodes: ApiNode[];

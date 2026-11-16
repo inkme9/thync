@@ -16,7 +16,7 @@ thync는 여러 서비스에 흩어진 활동을 작업 단위로 묶습니다. 
 
 ## 어떻게 사용하나요
 
-1. **활동을 모읍니다.** GitHub 커밋·리뷰 요청·내 PR, 나에게 배정된 Jira 티켓, 최근 수정한 Notion 페이지를 읽습니다. Claude Code와 OpenAI Codex CLI 세션 로그도 설정에 따라 읽습니다.
+1. **활동을 모읍니다.** GitHub 커밋·리뷰 요청·내 PR, 나에게 배정된 Jira 티켓, 최근 수정한 Notion 페이지와 Obsidian 노트를 읽습니다. Claude Code와 OpenAI Codex(CLI·Desktop) 세션 로그도 설정에 따라 읽습니다.
 2. **관련 활동을 작업 단위로 묶습니다.** 같은 Jira 에픽·티켓, 브랜치 또는 저장소에 속한 활동을 연결합니다.
 3. **상태를 확인하고 작업을 이어갑니다.** 사용자는 그래프와 칸반을 보고, 에이전트는 `thync_now`로 현재 맥락을 조회합니다. 필요한 PR 작업은 확인 창을 거쳐 Claude에게 맡깁니다.
 
@@ -34,7 +34,7 @@ thync는 여러 서비스에 흩어진 활동을 작업 단위로 묶습니다. 
 
 ### 1. 준비하고 실행합니다
 
-Python 3.10 이상, 화면 빌드용 Node.js 18 이상, 인증된 [GitHub CLI](https://cli.github.com/)가 필요합니다. GitHub CLI는 `gh auth login`으로 인증합니다. Python은 표준 라이브러리만 사용하며, Jira·Notion·Claude Code·Codex 연동은 선택 사항입니다.
+Python 3.10 이상, 화면 빌드용 Node.js 18 이상, 인증된 [GitHub CLI](https://cli.github.com/)가 필요합니다. GitHub CLI는 `gh auth login`으로 인증합니다. Python은 표준 라이브러리만 사용하며, Jira·Notion·Obsidian·Claude Code·Codex 연동은 선택 사항입니다.
 
 ```bash
 git clone https://github.com/choiahrok/thync.git
@@ -52,13 +52,13 @@ python3 -m thync
 cat "${THYNC_HOME:-$HOME/.thync}/token"
 ```
 
-출력된 토큰을 넣어 `http://127.0.0.1:8765/#t=<토큰>`을 한 번 엽니다. 브라우저가 토큰을 기억하므로 이후에는 `http://127.0.0.1:8765/`로 접속합니다. 서버를 종료하려면 실행한 터미널에서 `Ctrl+C`를 누릅니다.
+`http://127.0.0.1:8765/`을 열고 화면 위쪽의 입력 칸에 출력된 토큰을 넣습니다. 브라우저가 토큰을 기억하므로 다음부터는 바로 열립니다. 서버를 종료하려면 실행한 터미널에서 `Ctrl+C`를 누릅니다.
 
 ### 3. 필요한 출처와 에이전트를 연결합니다
 
-설정 파일이 없으면 GitHub·Jira·Notion·Claude Code·Codex 다섯 출처가 기본으로 활성화됩니다. Jira와 Notion의 API 수집에는 별도 인증 설정이 필요합니다. 세션 로그를 읽지 않으려면 `sources`에서 `claude_code`와 `codex`를 제외합니다. [예제 설정](config.example.json)은 세션 로그를 제외한 구성입니다.
+설정 파일이 없으면 GitHub·Jira·Notion·Obsidian·Claude Code·Codex 여섯 출처가 기본으로 활성화됩니다. Jira와 Notion의 API 수집에는 별도 인증 설정이 필요하고, Obsidian은 `obsidian_vaults`에 vault 폴더를, `obsidian_board`에 칸반 보드 파일을 적어야 읽습니다. 세션 로그를 읽지 않으려면 `sources`에서 `claude_code`와 `codex`를 제외합니다. [예제 설정](config.example.json)은 세션 로그를 제외한 구성입니다.
 
-- Jira·Notion을 연결하거나 수집할 출처를 바꾸려면 [설정 안내](docs/configuration.md)를 확인합니다.
+- Jira·Notion·Obsidian을 연결하거나 수집할 출처를 바꾸려면 [설정 안내](docs/configuration.md)를 확인합니다.
 - 에이전트가 현재 맥락을 조회하게 하려면 [MCP 등록 방법](docs/usage.md#에이전트에서-지금-하는-일-묻기-mcp)을 확인합니다.
 - 새 Claude Code 세션이 현재 맥락을 알고 시작하게 하려면 [SessionStart hook](docs/usage.md#세션을-시작할-때-자동으로-알려-주기-sessionstart-hook)을 등록합니다.
 - 원격 접속이나 실행 문제는 [설치와 실행](docs/getting-started.md)에서 확인합니다.
@@ -67,7 +67,7 @@ cat "${THYNC_HOME:-$HOME/.thync}/token"
 
 설정과 수집 데이터는 기본적으로 `~/.thync/`에 저장합니다. 웹 서버는 `127.0.0.1`에서 실행하며, 데이터 조회와 변경에는 접근 토큰이 필요합니다.
 
-GitHub·Jira·Notion 활동은 각 서비스에서 조회합니다. Jira와 Notion에는 쓰지 않습니다. PR을 위임하면 Claude CLI가 관련 내용을 처리합니다. 다른 사람의 PR에는 Concord 작업이 리뷰와 승인을 게시하고, 내 PR에서는 코드를 수정해 push하고 조건을 채우면 그 PR을 병합합니다. 자세한 범위는 [데이터와 보안](docs/security.md)에 설명합니다.
+GitHub·Jira·Notion 활동은 각 서비스에서 조회하고, Obsidian 노트는 이 컴퓨터의 vault 폴더에서 읽습니다. Jira, Notion, vault에는 쓰지 않습니다. PR을 위임하면 Claude CLI가 관련 내용을 처리합니다. 다른 사람의 PR에는 Concord 작업이 리뷰와 승인을 게시하고, 내 PR에서는 코드를 수정해 push하고 조건을 채우면 그 PR을 병합합니다. 자세한 범위는 [데이터와 보안](docs/security.md)에 설명합니다.
 
 ## 더 알아보기
 
@@ -77,7 +77,7 @@ GitHub·Jira·Notion 활동은 각 서비스에서 조회합니다. Jira와 Noti
 | --- | --- |
 | 설치, 첫 접속, SSH 접속, 문제 해결 | [설치와 실행](docs/getting-started.md) |
 | 화면·색상, 칸반 카드, MCP 등록 | [화면, 칸반과 MCP](docs/usage.md) |
-| 설정 키, 저장 파일, Jira·Notion 연결, 수집 주기 | [설정과 외부 서비스 연결](docs/configuration.md) |
+| 설정 키, 저장 파일, Jira·Notion·Obsidian 연결, 수집 주기 | [설정과 외부 서비스 연결](docs/configuration.md) |
 | PR 위임의 실행 조건, 확인 창, 허용 동작, 진행 상태 | [Claude에게 일 맡기기](docs/handoff.md) |
 | 접근 토큰, 외부 전송, 쓰기 권한 | [데이터와 보안](docs/security.md) |
 | 코드 구조, 데이터 흐름, HTTP API, 출처 추가 | [아키텍처](docs/architecture.md) |
@@ -96,8 +96,11 @@ GitHub·Jira·Notion 활동은 각 서비스에서 조회합니다. Jira와 Noti
 ```bash
 python3 -m unittest discover tests
 npm run typecheck
+npm test
 npm run build
 ```
+
+`npm test`는 화면 코드 테스트이고 Node.js 22.6 이상이 필요합니다(TypeScript 파일을 Node가 직접 실행합니다). 빌드만 하려면 Node.js 18 이상이면 됩니다.
 
 화면 코드를 수정할 때는 `npm run watch`로 저장할 때마다 다시 빌드합니다. 변경 사항은 브라우저를 새로고침해 확인합니다. 코드 구조와 확장 방법은 [아키텍처](docs/architecture.md)에 설명합니다.
 

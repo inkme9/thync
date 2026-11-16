@@ -1,4 +1,4 @@
-// Every data request carries X-Thync-Token. Open the page once with #t=<token> and it is remembered.
+// Every data request carries X-Thync-Token. It comes from #t=<token> in the address or from the token form, and is remembered.
 import { recall, remember, state } from "./state.ts";
 import type { ApiGraph } from "./types.ts";
 
@@ -10,6 +10,13 @@ let token = recall("token") || "";
     remember("token", token);
     history.replaceState(null, "", location.pathname + location.search); // keep the token out of the address bar
   }
+}
+
+export const currentToken = (): string => token;
+
+export function setToken(value: string): void {
+  token = value.trim();
+  remember("token", token);
 }
 
 export const api = (path: string, init: RequestInit = {}): Promise<Response> =>
