@@ -18,13 +18,15 @@
     #hud { position: absolute; top: 14px; left: 16px; right: 140px; display: flex; gap: 12px; align-items: flex-start;
       font: 12px "JetBrains Mono", Menlo, monospace; letter-spacing: .08em; color: var(--quiet); }
     #hud b { color: var(--ink); }
-    #token-form { display: flex; gap: 6px; }
+    #hud:has(#token-form:not([hidden])) { flex-wrap: wrap; row-gap: 8px; }
+    #token-form { display: flex; gap: 6px; flex: 1 1 10em; max-width: 22em; margin-top: -4px; }
     #token-form[hidden] { display: none; }
-    #token-form input { width: 16em; background: #0f0e12; border: 1px solid var(--line); border-radius: 4px; color: var(--ink);
+    #token-form:not([hidden]) ~ #status { flex-basis: 100%; }
+    #token-form input { flex: 1; min-width: 0; background: #0f0e12; border: 1px solid var(--line); border-radius: 4px; color: var(--ink);
       font: inherit; padding: 3px 6px; }
     #token-form input:focus { outline: none; border-color: #ffcf6b; }
     #token-form button { background: none; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); font: inherit;
-      padding: 3px 9px; cursor: pointer; }
+      padding: 3px 9px; cursor: pointer; white-space: nowrap; }
     #rotate { position: absolute; top: 10px; right: 16px; height: 28px; padding: 0 12px; background: rgba(12, 11, 14, .6);
       border: 1px solid var(--line); border-radius: 6px; color: var(--quiet); font: 12px "JetBrains Mono", Menlo, monospace;
       letter-spacing: .06em; cursor: pointer; }
@@ -177,8 +179,7 @@
   <main id="stage">
     <div id="brain">
       <canvas id="graph"></canvas>
-      <div id="hud"><span class="dot"></span><b>THYNC</b><span id="status">불러오는 중</span>
-        <form id="token-form" hidden><input type="text" name="username" autocomplete="username" value="thync" hidden><input type="password" name="token" autocomplete="current-password" aria-label="접근 토큰" placeholder="접근 토큰" required><button type="submit">열기</button></form></div>
+      <div id="hud"><span class="dot"></span><b>THYNC</b><form id="token-form" hidden><input type="text" name="username" autocomplete="username" value="thync" hidden><input type="password" name="token" autocomplete="current-password" aria-label="접근 토큰" placeholder="접근 토큰" required><button type="submit">열기</button></form><span id="status">불러오는 중</span></div>
       <button id="rotate" type="button"></button>
       <ul id="live"></ul>
       <div id="help" title="드래그 회전 · 스크롤 확대 · 노드 클릭 선택 · PR 노드를 맨 아래 줄기에 놓으면 리뷰 작업을 맡김 · 카드는 끌어서 옮기고 두 번 눌러 고침">? 조작법</div>
