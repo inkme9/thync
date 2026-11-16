@@ -82,7 +82,7 @@
 - 경로는 파일 경로의 바이트를 퍼센트 인코딩해 넣습니다(`urllib.parse.quote(os.fsencode(path), safe="")`). 문자열을 UTF-8로 인코딩하는 방식은 UTF-8이 아닌 파일 이름(Linux에서 생길 수 있습니다)에서 오류를 내고 그 훑기 전체를 멈추므로 쓰지 않습니다. 바이트를 인코딩하면 그런 파일에도 주소가 생깁니다.
 - 화면의 상세 패널은 `http://`, `https://`, `obsidian://open?`으로 시작하는 주소만 링크로 만듭니다(`web/src/detail.ts`). 판정은 `web/src/link.ts`가 합니다.
 - `http(s)` 링크는 주소마다 탭 하나를 열어 두고 다시 누르면 그 탭을 앞으로 가져옵니다(`openOnce`). `obsidian://` 링크에는 이 방식을 쓰지 않고 브라우저의 기본 동작에 맡깁니다. 탭을 열면 빈 탭만 남고, 다시 눌러도 그 빈 탭만 앞으로 올 뿐 노트가 열리지 않기 때문입니다.
-- 데스크톱 앱(`desktop/src-tauri/src/main.rs`)의 thync 창은 webview가 `obsidian://` 주소를 스스로 열지 못하므로, 그 주소를 macOS의 `open` 명령으로 Obsidian에 넘깁니다. 창 안에서 이동하는 경우(`on_navigation`, 칸반 카드)와 새 창을 여는 경우(`on_new_window`, 상세 패널의 노트 링크)를 모두 가로채고, 창 자체는 이동하지 않거나 새 창을 열지 않습니다.
+- 데스크톱 앱(`desktop/src-tauri/src/main.rs`)의 thync 창은 webview가 `obsidian://` 주소를 스스로 열지 못하므로, 그 주소를 macOS의 `open` 명령으로 Obsidian에 넘깁니다. 상세 패널의 노트 링크를 누르면 창이 그 주소로 이동하려 하므로, 이 이동을 가로채(`on_navigation`) Obsidian에 넘기고 창은 그대로 둡니다.
 - 노트가 만든 PR 노드의 이름은 `<저장소> #<번호>`입니다. PR의 제목이나 상태는 조회하지 않습니다.
 
 ### 처리 순서와 작업 단위

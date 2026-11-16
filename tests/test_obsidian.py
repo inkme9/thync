@@ -4,7 +4,6 @@ import os
 import tempfile
 import time
 import unittest
-import urllib.parse
 from pathlib import Path
 from unittest import mock
 
@@ -110,8 +109,9 @@ class Extract(unittest.TestCase):
         self.assertEqual((got["tags"], got["links"], got["keys"]), (["keep"], ["y"], []))
 
     def test_a_fence_line_with_an_info_string_does_not_close_the_fence(self):
-        got = obsidian.extract("```python\ncode ABC-1\n```js\nABC-2 inside\n```\nABC-3 after\n")
+        got = obsidian.extract("```python\ncode ABC-1\n```js\nABC-2 inside\n```~~\nABC-4 inside\n```\nABC-3 after\n")
         self.assertEqual(got["keys"], ["ABC-3"])
+        self.assertEqual(obsidian.extract("~~~\nABC-1\n~~~~\nABC-2\n")["keys"], ["ABC-2"])
 
     def test_at_most_ten_pull_requests_per_note(self):
         text = " ".join(f"https://github.com/o/r/pull/{i}" for i in range(1, 15))
@@ -145,13 +145,13 @@ class Scan(unittest.TestCase):
         with self.listed(fifo, write(self.vault / "note.md", "x")):
             self.assertEqual(self.rels(obsidian.scan(time.time())), ["note.md"])
 
-    def test_a_file_name_that_is_not_utf8_still_gets_a_url_and_does_not_stop_the_scan(self):
+    def test_a_file_name_that_is_not_utf8_is_skipped_and_the_rest_can_be_sent_as_json(self):
         odd = str(self.vault) + "/\udcff.md"  # how os.walk returns the byte 0xff on Linux; macOS cannot store it
         real = str(write(self.vault / "note.md", "x"))
-        open_ = os.open
-        with self.listed(odd, real), mock.patch("os.open", lambda p, *a: open_(real if p == odd else p, *a)):
-            urls = [n["url"] for n in obsidian.scan(time.time())]
-        self.assertIn("obsidian://open?path=" + urllib.parse.quote(str(self.vault), safe="") + "%2F%FF.md", urls)
+        with self.listed(odd, real):
+            notes = obsidian.scan(time.time())
+        self.assertEqual(self.rels(notes), ["note.md"])
+        json.dumps(notes, ensure_ascii=False).encode()  # what the server and the MCP server send
 
     def test_a_recent_note_carries_its_title_url_time_and_profile(self):
         path = write(self.vault / "일지" / "회의 메모.md", "#설계 [[다른]] ABC-9", age=600)
