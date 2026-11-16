@@ -29,7 +29,7 @@ class CodexSession(Session):
 
     def __init__(self, path: Path):
         super().__init__(path)
-        self.subagent: bool | None = None  # set by the first session_meta
+        self.spawned: bool | None = None  # started by another Codex thread or program; set by the first session_meta
         self.last_prompt = ("", "")  # (line type, text) of the last prompt, to count one input logged both ways once
 
     def prompt(self, ts: str, kind: str, text: str) -> None:
@@ -49,17 +49,18 @@ class CodexSession(Session):
         d = json.loads(line)
         ts, kind, p = d.get("timestamp", ""), d.get("type"), d.get("payload") or {}
         if kind == "session_meta":
-            if self.subagent is None:  # a forked log copies its parent's session_meta after its own; keep the first
-                self.subagent = True  # until this line proves otherwise: a malformed first meta hides the log
+            if self.spawned is None:  # a forked log copies its parent's session_meta after its own; keep the first
+                self.spawned = True  # until this line proves otherwise: a malformed first meta hides the log
                 if not isinstance(d.get("payload"), dict):
                     return
-                # Spawned by another Codex thread, like a sidechain.
-                self.subagent = isinstance(p.get("source"), dict) or p.get("thread_source") == "subagent"
+                # A subagent of another Codex thread (like a sidechain), or a `codex exec` run another program started.
+                self.spawned = (isinstance(p.get("source"), dict) or p.get("thread_source") == "subagent"
+                                or p.get("source") == "exec")
                 self.id = p.get("id") or self.id
                 self.cwd = p.get("cwd") or ""
                 self.branch = (p.get("git") or {}).get("branch") or ""
             return
-        if self.subagent:
+        if self.spawned:
             return
         t = p.get("type")
         if kind == "event_msg" and t == "user_message":

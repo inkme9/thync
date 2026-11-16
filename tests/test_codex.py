@@ -124,11 +124,14 @@ class CodexPrompts(unittest.TestCase):
         s = self.read([meta(), legacy(ts(50), "ok"), legacy(ts(40), "ok")])
         self.assertEqual([p for _, p in s.prompts], ["ok", "ok"])
 
-    def test_subagent_is_not_a_session_but_exec_is(self):  # criterion 7
+    def test_subagent_and_exec_are_not_sessions(self):  # criterion 7
         sub = self.write([meta({"subagent": {"thread_spawn": {"parent_thread_id": "p"}}}), user(ts(50), "do x")])
         self.assertIsNone(_load_one(sub, NOW, 7 * 86400, CodexSession))
         run = self.write([meta("exec"), user(ts(50), "do x")])
-        self.assertIsNotNone(_load_one(run, NOW, 7 * 86400, CodexSession))
+        self.assertIsNone(_load_one(run, NOW, 7 * 86400, CodexSession))
+        for source in ("cli", "vscode"):  # typed in the CLI, Codex Desktop or the IDE extension
+            self.assertIsNotNone(_load_one(self.write([meta(source), user(ts(50), "do x")]), NOW, 7 * 86400,
+                                           CodexSession), source)
 
     def test_a_fork_keeps_its_own_session_meta(self):  # criterion 7: a subagent log copies its parent's meta
         parent = {"type": "session_meta", "timestamp": ts(90), "payload": {
@@ -137,7 +140,7 @@ class CodexPrompts(unittest.TestCase):
             "id": "child", "cwd": "/w/repo", "source": {"subagent": {}}, "thread_source": "subagent",
             "forked_from_id": "parent"}}
         s = self.read([child, parent, user(ts(50), "copied parent prompt")])
-        self.assertEqual((s.id, s.cwd, s.subagent, s.prompts), ("child", "/w/repo", True, []))
+        self.assertEqual((s.id, s.cwd, s.spawned, s.prompts), ("child", "/w/repo", True, []))
         s = self.read([meta(), parent, user(ts(50), "x")])  # a later meta does not replace the first one either
         self.assertEqual((s.id, s.cwd), ("c1", "/w/repo"))
 
@@ -146,7 +149,7 @@ class CodexPrompts(unittest.TestCase):
         for payload in (["not", "a", "dict"], [], None, "text"):
             broken = {"type": "session_meta", "timestamp": ts(90), "payload": payload}
             s = self.read([broken, parent, user(ts(50), "copied parent prompt")])
-            self.assertEqual((s.subagent, s.prompts), (True, []), payload)
+            self.assertEqual((s.spawned, s.prompts), (True, []), payload)
 
     def test_thread_source_subagent_with_a_string_source(self):  # criterion 7
         path = self.write([{"type": "session_meta", "timestamp": ts(90), "payload": {
