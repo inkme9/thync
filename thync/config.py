@@ -105,9 +105,9 @@ def parse_board(raw) -> dict | None:
     try:
         if "\0" in path:
             raise ValueError
-        os.fsencode(path)
-    except (ValueError, UnicodeEncodeError):  # no file can have this name, and lstat would raise on every request
-        print("thync: obsidian_board ignored: the path has a character no file name can have", file=sys.stderr, flush=True)
+        path.encode("utf-8")
+    except (ValueError, UnicodeEncodeError):  # lstat would raise on every request, or the card could not go out as JSON
+        print("thync: obsidian_board ignored: the path has a NUL or a character that is not UTF-8", file=sys.stderr, flush=True)
         return None
     return {"path": path, "profile": PROFILE_WORK if v.get("profile") == PROFILE_WORK else PROFILE_PERSONAL}
 

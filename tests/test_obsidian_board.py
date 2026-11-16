@@ -73,7 +73,7 @@ class Setting(unittest.TestCase):
     def test_nothing_or_an_unusable_value_is_no_board(self):
         with mock.patch("sys.stderr"):
             for raw in (None, "", [], 3, {"profile": "회사"}, "notes/board.md", {"path": "board.md"}, "~no-such-user-here/b.md",
-                        "/v/a\0b.md", "/v/\ud800.md"):
+                        "/v/a\0b.md", "/v/\ud800.md", "/v/\udcff.md"):
                 self.assertIsNone(config.parse_board(raw), raw)
 
 

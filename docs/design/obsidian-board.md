@@ -23,7 +23,7 @@
 - `profile`은 `회사` 또는 `개인`입니다. 생략하거나 다른 값을 쓰면 `개인`입니다.
 - `path`는 절대 경로나 `~`로 시작하는 경로여야 합니다. `obsidian_vaults`에 적은 vault 안에 있지 않아도 됩니다.
 - 상대 경로, 사용자가 없는 `~사용자`, 경로가 아닌 값은 서버를 켤 때 버리고 서버 로그에 경고합니다.
-- 경로에 NUL이나 파일 이름이 가질 수 없는 문자(파일 시스템 인코딩으로 바꿀 수 없는 문자)가 있어도 서버를 켤 때 버리고 경고합니다. 그런 이름의 파일은 없고, 그대로 두면 요청마다 `lstat`이 오류를 냅니다.
+- 경로에 NUL이나 UTF-8로 나타낼 수 없는 문자가 있으면 서버를 켤 때 버리고 경고합니다. 그대로 두면 요청마다 `lstat`이 오류를 내거나, 카드의 경로를 JSON으로 보내지 못합니다.
 - `sources`에 `obsidian`이 없으면 읽지 않습니다.
 
 ### 읽는 범위
@@ -69,7 +69,7 @@
 | `profile` | 설정의 `profile` |
 | `updated` | 보드 파일의 수정 시각(초). 모든 카드가 같은 값입니다 |
 | `readonly` | `true` |
-| `url` | `obsidian://open?path=` + 보드 파일 경로의 바이트를 퍼센트 인코딩한 값(`urllib.parse.quote(os.fsencode(path), safe="")`). vault 노트의 `url`과 같은 방식입니다 |
+| `url` | `obsidian://open?path=` + 보드 파일의 절대 경로를 퍼센트 인코딩한 값(`urllib.parse.quote(path, safe="")`). vault 노트의 `url`과 같은 방식입니다 |
 | `file` | 보드 파일의 경로 |
 | `sub`, `focus` | 빈 문자열 |
 | `auto_column`, `moved` | `column`과 같은 값, `false` |
@@ -137,7 +137,7 @@
 
 | 위치 | 하는 일 |
 | --- | --- |
-| `thync/config.py` | `parse_board()`가 `obsidian_board`를 `{path, profile}`로 해석합니다. 상대 경로, 파일 이름이 될 수 없는 경로, 쓸 수 없는 값은 버리고 경고합니다 |
+| `thync/config.py` | `parse_board()`가 `obsidian_board`를 `{path, profile}`로 해석합니다. 상대 경로, NUL이나 UTF-8로 나타낼 수 없는 문자가 있는 경로, 쓸 수 없는 값은 버리고 경고합니다 |
 | `thync/sources/obsidian.py` | `board_cards()`가 보드 파일을 읽어 카드 목록을 돌려줍니다. 형식 해석(`parse_board`)과 칸 규칙(`board_column`)은 파일을 열지 않는 함수로 떼어 둡니다. `scan()`이 보드 파일을 노트에서 뺍니다 |
 | `thync/board.py` | `build_board()`가 끝에 보드 카드를 더합니다. `obsidian-card:`로 시작하는 카드 파일은 적용하지도, 직접 추가한 카드로 내놓지도 않습니다 |
 | `thync/util.py` | `BOARD_CARD`(`obsidian-card:`)와 `is_kanban(text)`: 머리말에 `kanban-plugin` 키가 있는지 판정합니다. 보드를 읽는 쪽과 카드 파일을 읽는 쪽이 같은 함수를 씁니다 |

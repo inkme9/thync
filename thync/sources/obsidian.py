@@ -226,7 +226,7 @@ def parse_board(text: str, profile: str, path: str, updated: int) -> list[dict]:
             item["lines"].append(line.strip())  # a card of several lines
         elif lane and not lane["cards"] and BOLD_LINE.fullmatch(line.strip()):
             lane["complete"] = True
-    url = "obsidian://open?path=" + urllib.parse.quote(os.fsencode(path), safe="")
+    url = "obsidian://open?path=" + urllib.parse.quote(path, safe="")
     cards, seen = [], {}
     for it in items[:MAX_BOARD_CARDS]:
         # The plugin puts a card's block id at the end of its text: the last line of a card of several lines.
