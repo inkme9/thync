@@ -29,6 +29,7 @@ from .reflex import start_reflex
 from .sources import github, jira, notion, obsidian, remote
 from .sources.claude_code import load_sessions, questions_of
 from .store import BOARD_COLUMNS, load_token, save_card, save_name
+from .util import BOARD_CARD
 
 TOKEN = ""
 
@@ -252,7 +253,7 @@ class Handler(SimpleHTTPRequestHandler):
         body = self.read_body(8192)
         # A new card gets a fresh id and is saved as a hand-made card.
         cid = f"manual:{int(time.time() * 1000)}{secrets.token_hex(2)}" if body.get("new") else " ".join(str(body["id"]).split())
-        if not cid or len(cid) > 500:
+        if not cid or len(cid) > 500 or cid.startswith(BOARD_CARD):  # Obsidian board cards are read-only
             raise ValueError("bad id")
         change = {"reset": bool(body.get("reset"))}
         if "column" in body:
@@ -273,7 +274,7 @@ class Handler(SimpleHTTPRequestHandler):
     def post_rename(self):
         body = self.read_body(4096)
         nid, name = " ".join(str(body["id"]).split()), " ".join(str(body.get("name", "")).split())
-        if not nid or len(nid) > 500 or len(name) > 120:
+        if not nid or len(nid) > 500 or len(name) > 120 or nid.startswith(BOARD_CARD):
             raise ValueError("bad id or name")
         save_name(nid, name)
         self.send_response(204)

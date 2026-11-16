@@ -4,10 +4,11 @@ Columns: waiting (a session waits on my answer), todo, doing (including work Cla
 handed off to Claude), done. A column set by hand in the
 card's Markdown file wins over the automatic one, which stays in `auto_column` so it can be restored.
 """
-from .config import HANDOFF, JIRA_DONE, JIRA_TODO, PROFILE_PERSONAL, PROFILE_WORK
+from .config import HANDOFF, JIRA_DONE, JIRA_TODO, PROFILE_PERSONAL, PROFILE_WORK, SOURCES
 from .reflex import tmux_alive
-from .sources import remote
+from .sources import obsidian, remote
 from .store import BOARD_COLUMNS, load_reflexes
+from .util import BOARD_CARD
 
 REVIEW_STATUS = {"running": "리뷰 중", "posted": "리뷰 올림", "approved": "리뷰 올리고 승인함", "failed": "실패",
                  "same": "이미 이 커밋을 리뷰함"}
@@ -97,7 +98,7 @@ def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list
     # Card files with no automatic card are cards made by hand.
     auto_ids = {c["id"] for c in cards}
     for cid, f in card_files.items():
-        if cid in auto_ids:
+        if cid in auto_ids or cid.startswith(BOARD_CARD):  # a card file never stands in for a board card
             continue
         meta = f["meta"]
         column = meta.get("column") if meta.get("column") in BOARD_COLUMNS else "todo"
@@ -105,4 +106,8 @@ def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list
                       "auto_column": column, "moved": False, "note": f["note"],
                       "profile": meta.get("profile", PROFILE_PERSONAL), "updated": int(f["path"].stat().st_mtime),
                       "focus": "", "tags": ["직접 추가"], "file": str(f["path"])})
+
+    # Cards of the Obsidian Kanban board, read-only. They come last, so no card file above is applied to them.
+    if "obsidian" in SOURCES:
+        cards += obsidian.board_cards()
     return cards

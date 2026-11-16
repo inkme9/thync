@@ -1,6 +1,7 @@
 // The kanban board under the brain. Cards are dragged between columns (a hand-set column wins over the
 // automatic one) and edited in place: double-click a title or a note. Each card is a Markdown file on the
 // server. Also here: view modes (brain + board / brain / board), the resize handle, and "+ 카드".
+import { droppable, editable, opens } from "./card.ts";
 import { post } from "./api.ts";
 import { focus, refresh } from "./main.ts";
 import { infoButton } from "./panel.ts";
@@ -18,14 +19,16 @@ let busy = false; // while dragging or editing, the 2 s refresh must not redraw 
 const saveCard = (body: Record<string, unknown>) => post("/board", body);
 
 function cardView(c: ApiCard): HTMLDivElement {
-  const el = Object.assign(document.createElement("div"), { className: "card", draggable: true });
+  const mine = editable(c);
+  const el = Object.assign(document.createElement("div"), { className: "card", draggable: mine });
   el.style.borderLeftColor = c.column === "done" ? "#6f6b75" : profileColor(c.profile);
-  const title = Object.assign(document.createElement("div"), { className: "t", textContent: c.title, title: "두 번 눌러 제목 고치기" });
+  const title = Object.assign(document.createElement("div"), {
+    className: "t", textContent: c.title, title: mine ? "두 번 눌러 제목 고치기" : "Obsidian에서 고칩니다. 누르면 보드가 열립니다" });
   const sub = Object.assign(document.createElement("div"), {
     className: "s", textContent: [c.sub, `${c.profile} · ${ago(epochMs(c.updated) / 1000)}`].filter(Boolean).join(" · ") });
   const note = Object.assign(document.createElement("div"), {
-    className: c.note ? "note" : "note empty", textContent: c.note, title: "두 번 눌러 메모 고치기" });
-  note.dataset.placeholder = "메모 추가";
+    className: c.note ? "note" : "note empty", textContent: c.note, title: mine ? "두 번 눌러 메모 고치기" : "" });
+  if (mine) note.dataset.placeholder = "메모 추가";
   const tags = Object.assign(document.createElement("div"), { className: "tags" });
   tags.replaceChildren(...c.tags.map((x) => Object.assign(document.createElement("i"), { textContent: x })));
   if (c.moved) {
@@ -37,11 +40,14 @@ function cardView(c: ApiCard): HTMLDivElement {
   el.append(title, sub, note, tags);
   if (c.focus) el.prepend(infoButton(c.focus));
   el.onclick = () => {
+    const url = opens(c);
+    if (url) { location.href = url; return; }  // the browser hands it to Obsidian; the page stays
     // A waiting card opens the question it waits on; the others show their work on the brain.
     const asking = c.column === "waiting" && state.data.nodes.find((n) => n.detail.unit === c.id && n.detail.waiting);
     if (asking) showWaiting(asking);
     else if (c.focus) focus(c.focus);
   };
+  if (!mine) return el;
   title.ondblclick = (e) => { e.stopPropagation(); editInPlace(el, title, c.title, true, (v) => ({ id: c.id, title: v })); };
   el.ondblclick = () => editInPlace(el, note, c.note, false, (v) => ({ id: c.id, note: v }));
   el.ondragstart = (e) => { busy = true; el.classList.add("dragging"); e.dataTransfer!.setData("text/plain", c.id); };
@@ -97,7 +103,7 @@ for (const section of boardEl.querySelectorAll<HTMLElement>("section")) {
     section.classList.remove("over");
     const id = e.dataTransfer!.getData("text/plain");
     const card = state.data.board.find((c) => c.id === id);
-    if (!card || card.column === section.dataset.col) return;
+    if (!droppable(card) || !card || card.column === section.dataset.col) return;
     // Dropping on "맡긴 일" does not move the card: it asks to hand the work's PR off to Claude.
     if (section.dataset.col === "reflex") {
       busy = false;

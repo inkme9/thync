@@ -31,13 +31,14 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 | `company_roots` | 이 폴더 아래에서 시작한 세션은 회사 프로필이 됩니다. PR을 맡길 때 로컬 저장소를 찾는 위치이기도 합니다 | `[]` (세션은 모두 개인) |
 | `jira_browse_url` | Jira 티켓 링크 앞부분 (예: `https://example.atlassian.net/browse/`). 티켓 정보를 받아 올 주소도 여기서 정합니다 | 없음 (링크 없음) |
 | `jira_email` | Jira Cloud 계정 이메일. API 토큰과 함께 있으면 티켓 요약·상태·상위 이슈를 자동으로 받아 옵니다 | 없음 (`jira.json`을 손으로 채움) |
-| `cards_dir` | 칸반 카드 파일을 둘 폴더. Obsidian vault 안 폴더를 지정해도 됩니다 | `<THYNC_HOME>/cards` (기본 `~/.thync/cards`) |
+| `cards_dir` | 칸반 카드 파일을 둘 폴더. Obsidian vault 안 폴더를 지정해도 됩니다. 이 폴더에 있는 Obsidian Kanban 보드 파일과 UTF-8이 아닌 파일은 카드로 읽지 않습니다 | `<THYNC_HOME>/cards` (기본 `~/.thync/cards`) |
 | `port` | 서버 포트 | `8765` |
 | `reflex_skills` | 내 PR을 맡길 때 실행할 Claude Code 스킬 (`sent`) | `pr-review-watch` |
 | `ask_wait_sec` | 질문 hook 이 thync 의 답을 기다리는 시간(초). 지나면 세션이 직접 묻습니다 ([사용법](usage.md#선택-대기-질문에-thync-에서-답하기-pretooluse-hook)) | `300` |
 | `remotes` | 이 화면에 함께 보일 다른 서버 목록. `[{"name": "devbox1", "ssh": "devbox1"}]`. `ssh`는 `ssh` 명령에 주는 호스트, `port`(기본 `8765`)와 `thync_home`(기본 `~/.thync`)은 그 서버의 thync 값입니다 ([여러 서버를 한 화면에서](#여러-서버를-한-화면에서)) | `[]` |
 | `reflex_host` | PR 을 맡길 때 Claude 를 실행할 서버(`remotes`의 `name`). 그 서버의 저장소와 tmux 에서 돕니다 | 없음 (이 머신) |
 | `notion_user_id` | 이 Notion 사용자가 마지막으로 고친 페이지만 사용합니다 | 없음 (integration이 볼 수 있는 페이지 모두) |
+| `obsidian_board` | thync 칸반에 함께 보일 Obsidian Kanban 보드 파일 하나. 경로이거나 `{"path": "~/vault/칸반.md", "profile": "회사"}`. 읽기만 합니다 ([Obsidian 칸반 보드](#obsidian-칸반-보드)) | 없음 |
 | `obsidian_vaults` | 읽을 Obsidian vault 목록. `[{"path": "~/vault", "profile": "회사", "name": "work"}]`. `profile`은 `회사` 또는 `개인`(기본), `name`은 thync 안에서 vault를 구분하는 이름(기본은 폴더 이름)입니다 ([Obsidian](#obsidian)) | `[]` (읽지 않음) |
 
 ## 저장 파일
@@ -150,6 +151,32 @@ cat > "${THYNC_HOME:-$HOME/.thync}/notion_token"
   - 그래프에 없는 PR 주소는 PR 노드를 새로 만듭니다.
 - 상세 패널의 링크를 누르면 Obsidian에서 그 노트가 열립니다.
 - 코드 블록과 인라인 코드 안의 내용, `.obsidian`처럼 `.`으로 시작하는 폴더, 칸반 카드 폴더(`cards_dir`), 심볼릭 링크는 읽지 않습니다.
+
+#### Obsidian 칸반 보드
+
+Obsidian의 Kanban 플러그인으로 만든 보드 하나를 thync 칸반에 함께 볼 수 있습니다. `obsidian_board`에 보드 파일을 적고 서버를 다시 시작합니다. `sources`에 `"obsidian"`이 있어야 합니다.
+
+```json
+{
+  "obsidian_board": {"path": "~/vault/2 Area/칸반.md", "profile": "개인"}
+}
+```
+
+- 보드는 하나만 적을 수 있습니다. 경로는 절대 경로나 `~`로 시작하는 경로로 적고, `obsidian_vaults`의 vault 안에 있지 않아도 됩니다.
+- thync는 보드 파일을 읽기만 합니다. 보드 카드는 thync 화면에서 옮기거나 고칠 수 없고, 누르면 Obsidian에서 보드가 열립니다. Obsidian에서 고치면 다음 화면 갱신 때 반영됩니다.
+- 보드의 칸은 thync의 세 칸으로 옮겨 보여 주고, 원래 칸 이름을 카드에 표시합니다.
+
+  | thync의 칸 | 보드의 칸 |
+  | --- | --- |
+  | 완료 | 체크한 카드(`- [x]`), 플러그인에서 완료 칸으로 표시한 칸, 이름에 `완료`·`종료`·`done`·`complete`·`closed`가 낱말로 든 칸 |
+  | 진행 중 | 이름에 `진행`·`대기`·`막힘`·`확인`·`검수`·`doing`·`progress`·`blocked`·`waiting`·`review`가 낱말로 든 칸 |
+  | Todo | 그 밖의 칸 |
+
+- 보관함(`***` 아래)의 카드는 보이지 않습니다. 카드는 200장까지, 파일은 앞쪽 256KB까지 읽습니다.
+- 보드 파일은 Obsidian 노트로는 읽지 않습니다. 보드 자체가 노트 노드로 보이지 않습니다.
+- 카드의 글과 보드 파일의 경로는 화면으로 나갑니다([데이터와 보안](security.md)).
+
+이유와 한계는 [설계 문서](design/obsidian-board.md)에 있습니다.
 
 누가 고쳤는지는 알 수 없어서 파일 수정 시각만 봅니다. 동기화 도구가 수정 시각을 바꾸면 고치지 않은 노트도 보일 수 있습니다. 그 밖의 한계는 [설계 문서](design/obsidian-source.md#치르는-비용)에 있습니다.
 
