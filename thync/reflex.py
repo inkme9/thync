@@ -39,8 +39,9 @@ def origin_matches(path: str, slug: str) -> bool:
     if not Path(path).is_dir():
         return False
     out = subprocess.run(["git", "-C", path, "remote", "get-url", "origin"], capture_output=True, text=True, timeout=10)
-    remote = re.sub(r"^.*github\.com[:/]", "", out.stdout.strip()).removesuffix(".git").lower()
-    if out.returncode != 0 or not remote:
+    remote, github_remote = re.subn(r"^.*github\.com[:/]", "", out.stdout.strip())
+    remote = remote.removesuffix(".git").lower()
+    if out.returncode != 0 or not remote or not github_remote:  # only a GitHub remote can be looked up there
         return False
     return remote == slug.lower() or canonical_slug(remote) == canonical_slug(slug)
 

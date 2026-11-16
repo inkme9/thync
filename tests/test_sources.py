@@ -56,9 +56,10 @@ class GitHub(unittest.TestCase):
         self.assertEqual([t["path"] for t in got["threads"]], ["b.py", "a.py"])  # unresolved first
 
     def test_accounts_are_merged_and_a_failing_one_keeps_its_last_list(self):
-        def run(cmd, env=None, **kw):
-            if cmd[1] == "whoami":  # c is a mien profile without GitHub
-                return subprocess.CompletedProcess(cmd, 0, json.dumps({"github": None if cmd[2] == "c" else cmd[2]}), "")
+        def whoami(cmd, **kw):  # c is a mien profile without GitHub
+            return subprocess.CompletedProcess(cmd, 0, json.dumps({"github": None if cmd[2] == "c" else cmd[2]}), "")
+
+        def run(cmd, stdin, env, timeout):
             self.assertEqual(cmd[:2], ["mien", "exec"])
             self.assertNotEqual(cmd[2], "c")
             self.assertNotIn("GH_TOKEN", env)  # an inherited token never stands in for a profile's own
@@ -68,19 +69,27 @@ class GitHub(unittest.TestCase):
             if "search/issues" not in cmd:
                 raise subprocess.CalledProcessError(1, cmd)  # only review requests matter here
             urls = {"a": ["u1", "u2"], "b": ["u2", "u3"]}[cmd[2]]
-            return subprocess.CompletedProcess(cmd, 0, json.dumps({"items": [{"html_url": u} for u in urls]}), "")
+            return json.dumps({"items": [{"html_url": u} for u in urls]})
 
         fail = False
-        with mock.patch.multiple(github, ACCOUNTS=["a", "b", "c"], MIEN="mien", _seen_by={}, _lists={}, _logins={}), \
+        with mock.patch.multiple(github, ACCOUNTS=["a", "b", "c"], MIEN="mien", _seen_by={}, _lists={}, _logins={},
+                                 _failing=set()), \
                 mock.patch.dict(os.environ, {"GH_TOKEN": "inherited"}), \
-                mock.patch.object(github.subprocess, "run", side_effect=run):
-            for a in ("a", "b", "c"):
+                mock.patch.object(github.subprocess, "run", side_effect=whoami), \
+                mock.patch.object(github, "_run", side_effect=run), mock.patch("sys.stderr"):
+            for a in ("c", "b", "a"):  # b answers before a; the configured order still decides
                 github._refresh_account(a, 0)
             self.assertEqual([it["html_url"] for it in github.review_requests()], ["u1", "u2", "u3"])
-            self.assertEqual((github.account_for("u2"), github.account_for("u3")), ("a", "b"))
+            self.assertEqual([github.account_for(u) for u in ("u1", "u2", "u3", "elsewhere")], ["a", "a", "b", None])
             fail = True
             github._refresh_account("b", 0)
             self.assertEqual(len(github.review_requests()), 3)  # b's last list is kept
+
+    def test_a_review_request_is_answered_as_the_reviewer_not_the_author(self):
+        lists = {"author": {"sent": [{"url": "u"}]}, "reviewer": {"reviews": [{"html_url": "u"}]}}
+        with mock.patch.multiple(github, ACCOUNTS=["author", "reviewer"], _lists=lists):
+            github._index()
+            self.assertEqual(github.account_for("u"), "reviewer")
 
     def test_graph_lists_reviews_others_left_on_my_prs(self):
         at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 600))

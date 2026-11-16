@@ -41,8 +41,7 @@ class FixesTest(unittest.TestCase):
 
     def test_failed_slug_lookup_is_retried(self):
         fail = subprocess.CalledProcessError(1, "gh", stderr="boom")
-        ok = subprocess.CompletedProcess([], 0, "New/Name\n", "")
-        with mock.patch.object(github.subprocess, "run", side_effect=[fail, ok]):
+        with mock.patch.object(github, "_run", side_effect=[fail, "New/Name\n"]):
             self.assertEqual(github.canonical_slug("Old/Repo-x"), "old/repo-x")
             self.assertEqual(github.canonical_slug("Old/Repo-x"), "new/name")
 
@@ -58,6 +57,15 @@ class FixesTest(unittest.TestCase):
             review.review("https://github.com/o/r/pull/1", {"approve": False, "reviewed": "abc:False"})
         self.assertEqual((saved["status"], saved["reviewed"]), ("same", "abc:False"))  # kept for the next drop
         self.assertEqual(calls, [("api", "repos/o/r/pulls/1")])  # no diff fetched, nothing posted
+
+    def test_a_pr_no_account_lists_is_not_reviewed(self):
+        saved = {}
+        with mock.patch.object(review.github, "account_for", return_value=None), \
+                mock.patch.object(review, "gh") as gh, mock.patch.object(review, "save_reflex", lambda u, r: saved.update(r)):
+            review.review("https://github.com/o/r/pull/1", {"approve": True})
+        gh.assert_not_called()
+        self.assertEqual(saved["status"], "failed")
+        self.assertIn("계정", saved["error"])
 
     def test_reviewed_mark_survives_restarts_of_the_record(self):
         with mock.patch.object(review, "threading") as th, \

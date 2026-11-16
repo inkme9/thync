@@ -105,6 +105,8 @@ def review(url: str, record: dict) -> None:
     folder = tempfile.mkdtemp(prefix="thync-review-")
     account = github.account_for(url)  # the account whose review was requested
     try:
+        if account is None:
+            raise ValueError("이 PR 을 목록에 올린 GitHub 계정이 없어요")
         pr = json.loads(gh(account, "api", f"repos/{slug}/pulls/{number}", "--jq",
                            "{title, body, author: .user.login, base: .base.ref, head: .head.ref, sha: .head.sha}"))
         done = f"{pr['sha']}:{record['approve']}"  # asking for approve after a plain review is a new request
@@ -126,7 +128,7 @@ def review(url: str, record: dict) -> None:
         status = "approved" if payload["event"] == "APPROVE" else "posted"
         save_reflex(url, {**record, "status": status, "reviewed": done, "finished": int(time.time())})
     except Exception as e:  # noqa: BLE001 — whatever failed, the card must stop saying "running"
-        detail = (getattr(e, "stderr", None) or getattr(e, "stdout", None) or e.__class__.__name__).strip()[-200:]
+        detail = (getattr(e, "stderr", None) or getattr(e, "stdout", None) or str(e) or e.__class__.__name__).strip()[-200:]
         save_reflex(url, {**record, "status": "failed", "error": detail, "finished": int(time.time())})
     finally:
         shutil.rmtree(folder, ignore_errors=True)

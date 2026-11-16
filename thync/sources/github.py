@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -21,9 +22,10 @@ MIEN = shutil.which("mien") or "mien"
 # gh settings folder without any login, for profile calls: gh then has only the token mien hands it.
 NO_LOGIN = STATE_DIR / "gh-no-login"
 MAX_BRANCHES = 20  # pushed branches whose head commit message is fetched
-_seen_by: dict[str, str] = {}  # PR url -> account that listed it, so its reviews are read and posted as that account
+_seen_by: dict[str, str] = {}  # PR url -> account that lists it now; rebuilt from _lists, never added to
 _lists: dict[str, dict[str, list]] = {}  # account -> "reviews" | "sent" | "commits" -> what GitHub last returned
 _logins: dict[str, str] = {}  # account -> my login there, lowercased
+_failing: set[str] = set()  # "account kind" pairs whose last fetch failed, so each failure is logged once
 refreshed = 0.0  # when refresh() last finished
 FAILED = (subprocess.SubprocessError, OSError, json.JSONDecodeError, KeyError, TypeError)
 
@@ -31,6 +33,26 @@ SENT_QUERY = """query { search(query:"is:open is:pr author:@me archived:false", 
   title url number updatedAt isDraft repository { name } reviewDecision author { login }
   reviewRequests(first:5) { nodes { requestedReviewer { ... on User { login } ... on Team { name } } } }
   latestReviews(first:10) { nodes { author { login } state submittedAt body } } } } } }"""
+
+
+def _run(cmd: list[str], stdin: str | None, env: dict | None, timeout: int) -> str:
+    """subprocess.run(check=True) whose timeout interrupts instead of killing: mien removes the credential files it
+    wrote for the call on Ctrl-C (SIGINT), but SIGKILL leaves them behind."""
+    with subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                          encoding="utf-8", cwd=HOME, env=env, start_new_session=True) as p:
+        try:
+            out, err = p.communicate(stdin, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(p.pid, signal.SIGINT)  # mien and the gh it started
+            try:
+                p.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                p.communicate()
+            raise
+    if p.returncode:
+        raise subprocess.CalledProcessError(p.returncode, cmd, out, err)
+    return out
 
 
 def gh(account: str, *args: str, stdin: str | None = None, timeout: int = 60) -> str:
@@ -44,12 +66,28 @@ def gh(account: str, *args: str, stdin: str | None = None, timeout: int = 60) ->
         NO_LOGIN.mkdir(parents=True, exist_ok=True)
         env = {**{k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}, "GH_CONFIG_DIR": str(NO_LOGIN)}
     # From home: mien refuses a profile in a folder another profile claims, such as this repository.
-    return subprocess.run(cmd, input=stdin, cwd=HOME, env=env, capture_output=True, text=True, encoding="utf-8",
-                          timeout=timeout, check=True).stdout
+    return _run(cmd, stdin, env, timeout)
 
 
-def account_for(url: str) -> str:
-    return _seen_by.get(url, ACCOUNTS[0])
+def readers() -> list[str]:
+    """Accounts that answered at least once, in configured order."""
+    return [a for a in ACCOUNTS if a in _lists]
+
+
+def account_for(url: str) -> str | None:
+    """The account that lists this PR now: a review request before my own PR, then the configured order.
+    None when no account lists it; with gh's active account alone, that account."""
+    return "" if ACCOUNTS == [""] else _seen_by.get(url)
+
+
+def _index() -> None:
+    global _seen_by
+    seen: dict[str, str] = {}
+    for kind, key in (("reviews", "html_url"), ("sent", "url")):
+        for a in ACCOUNTS:
+            for it in _lists.get(a, {}).get(kind, []):
+                seen.setdefault(it[key], a)
+    _seen_by = seen
 
 
 def _merged(kind: str, key: str) -> list:
@@ -57,9 +95,7 @@ def _merged(kind: str, key: str) -> list:
     out = {}
     for a in ACCOUNTS:
         for it in _lists.get(a, {}).get(kind, []):
-            if it[key] not in out:
-                out[it[key]] = it
-                _seen_by.setdefault(it[key], a)
+            out.setdefault(it[key], it)
     return list(out.values())
 
 
@@ -170,7 +206,10 @@ def pr_reviews(url: str, now: float) -> dict:
     seen, data = _pr_reviews.get(url, (0.0, None))
     if data is None or now - seen > 60:
         owner, name, _, number = url.split("/")[3:7]
-        out = gh(account_for(url), "api", "graphql", "-f", f"query={REVIEWS_QUERY}", "-f", f"owner={owner}",
+        account = account_for(url)
+        if account is None:  # a PR no account lists, such as one a session linked: read it as any account
+            account = (readers() or [ACCOUNTS[0]])[0]
+        out = gh(account, "api", "graphql", "-f", f"query={REVIEWS_QUERY}", "-f", f"owner={owner}",
                  "-f", f"name={name}", "-F", f"number={number}")
         data = parse_reviews(json.loads(out)["data"]["repository"]["pullRequest"], set(_logins.values()))
         _pr_reviews[url] = (now, data)
@@ -193,9 +232,9 @@ _canonical: dict[str, str] = {}
 def canonical_slug(slug: str) -> str:
     """Current 'owner/name' of a repository, so a renamed repo still matches its old remote URL. Only answers
     GitHub gave are remembered; a failed lookup falls back to the slug and is tried again next time.
-    Each account is asked in turn, since a private repository is visible to only one of them."""
+    Each account that answers is asked in turn, since a private repository is visible to only one of them."""
     if slug not in _canonical:
-        for a in ACCOUNTS:
+        for a in readers() or ACCOUNTS[:1]:
             try:
                 name = gh(a, "api", f"repos/{slug}", "--jq", ".full_name").strip()
             except FAILED:
@@ -222,13 +261,21 @@ def _refresh_account(account: str, now: float) -> None:
     """Each list is shown as soon as it arrives; one that fails keeps what it had."""
     if account and not has_github(account):
         _lists.pop(account, None)
+        _index()
         return
     for kind, fetch in FETCH.items():
         try:
             got = fetch(account, now)
-        except FAILED:
+        except FAILED as e:
+            if f"{account} {kind}" not in _failing:
+                _failing.add(f"{account} {kind}")
+                why = (getattr(e, "stderr", None) or e.__class__.__name__).strip().splitlines()[-1:] or [""]
+                print(f"thync: GitHub {kind} for {account or 'gh'} failed, keeping the last list: {why[0][:200]}",
+                      file=sys.stderr, flush=True)
             continue
+        _failing.discard(f"{account} {kind}")
         _lists[account] = {**_lists.get(account, {}), kind: got}
+        _index()
     try:
         _logins[account] = login(account).lower()
     except FAILED:
@@ -240,6 +287,7 @@ def refresh(now: float) -> None:
     global refreshed
     with ThreadPoolExecutor(len(ACCOUNTS)) as pool:
         list(pool.map(lambda a: _refresh_account(a, now), ACCOUNTS))
+    _index()  # threads indexing at once may have left an older view
     refreshed = time.time()
 
 

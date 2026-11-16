@@ -6,7 +6,7 @@
 
 - Python 3.10 이상 (표준 라이브러리만 사용합니다)
 - Node.js 18 이상 (화면 코드를 빌드할 때만)
-- [GitHub CLI](https://cli.github.com/) (`gh auth login` 된 상태) — 내 커밋, 리뷰 요청, 내 PR
+- [GitHub CLI](https://cli.github.com/) (`gh auth login` 된 상태, 또는 `mien_profiles`에 적은 [mien](https://github.com/arinyaho/mien) 프로필) — 내 커밋, 리뷰 요청, 내 PR
 - 선택: Jira Cloud API 토큰 — 나에게 배정된 티켓 ([연결 설정](configuration.md#jira와-notion-연결))
 - 선택: Notion integration 토큰 — 최근에 고친 Notion 페이지
 - 선택: Obsidian vault 폴더 — 최근에 고친 노트 ([연결 설정](configuration.md#obsidian))
