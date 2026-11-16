@@ -29,7 +29,7 @@ class CodexSession(Session):
 
     def __init__(self, path: Path):
         super().__init__(path)
-        self.subagent = False
+        self.subagent: bool | None = None  # set by the first session_meta
         self.last_prompt = ("", "")  # (line type, text) of the last prompt, to count one input logged both ways once
 
     def prompt(self, ts: str, kind: str, text: str) -> None:
@@ -49,10 +49,12 @@ class CodexSession(Session):
         d = json.loads(line)
         ts, kind, p = d.get("timestamp", ""), d.get("type"), d.get("payload") or {}
         if kind == "session_meta":
-            self.id = p.get("id") or self.id
-            self.cwd = p.get("cwd") or ""
-            self.branch = (p.get("git") or {}).get("branch") or ""
-            self.subagent = isinstance(p.get("source"), dict)  # spawned by another Codex thread, like a sidechain
+            if self.subagent is None:  # a forked log copies its parent's session_meta after its own; keep the first
+                self.id = p.get("id") or self.id
+                self.cwd = p.get("cwd") or ""
+                self.branch = (p.get("git") or {}).get("branch") or ""
+                # Spawned by another Codex thread, like a sidechain.
+                self.subagent = isinstance(p.get("source"), dict) or p.get("thread_source") == "subagent"
             return
         if self.subagent:
             return
@@ -60,7 +62,8 @@ class CodexSession(Session):
         if kind == "event_msg" and t == "user_message":
             self.prompt(ts, kind, request(p.get("message") or ""))
         elif kind == "response_item" and t == "message" and p.get("role") == "user":
-            texts = (request(c.get("text") or "", context=True) for c in p.get("content") or [])
+            texts = (request(c.get("text") or "", context=True) for c in p.get("content") or []
+                     if c.get("type") == "input_text")
             self.prompt(ts, kind, " ".join(filter(None, texts)))
         elif kind == "event_msg" and t == "agent_message":
             self.last_at = max(self.last_at, ts)

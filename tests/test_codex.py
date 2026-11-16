@@ -53,7 +53,10 @@ class CodexPrompts(unittest.TestCase):
         path = self.write([meta(), user(ts(50), "fix the  login bug")])
         item = _load_one(path, NOW, 7 * 86400, CodexSession)
         self.assertIsNotNone(item)
-        self.assertEqual(item[0].prompts, [(ts(50), "fix the login bug")])
+        s = item[0]
+        self.assertEqual(s.prompts, [(ts(50), "fix the login bug")])
+        self.assertEqual(list(s.events), [(ts(50), "prompt", "fix the login bug")])
+        self.assertEqual(s.last_at, ts(50))
 
     def test_codex_context_is_not_a_prompt(self):  # criterion 2
         s = self.read([
@@ -65,6 +68,8 @@ class CodexPrompts(unittest.TestCase):
             user(ts(45), "<send_user_message_question_reply>\nyes\n</send_user_message_question_reply>"),
         ])
         self.assertEqual(s.prompts, [(ts(50), "fix it")])
+        self.assertEqual([e for e in s.events if e[1] == "prompt"], [(ts(50), "prompt", "fix it")])
+        self.assertEqual((s.last_at, s.last_prompt), (ts(50), ("response_item", "fix it")))
 
     def test_text_after_my_request_with_an_image(self):  # criterion 3
         s = self.read([meta(), user(
@@ -91,6 +96,14 @@ class CodexPrompts(unittest.TestCase):
             s = self.read([meta(), *pair, user(ts(40), "next"), legacy(ts(40), "next")])
             self.assertEqual([p for _, p in s.prompts], ["fix it", "next"], order)
 
+    def test_the_same_input_twice_in_both_formats_counts_twice(self):  # criterion 5 with criterion 6
+        s = self.read([meta(), user(ts(50), "ok"), legacy(ts(50), "ok"), user(ts(40), "ok"), legacy(ts(40), "ok")])
+        self.assertEqual(s.prompts, [(ts(50), "ok"), (ts(40), "ok")])
+
+    def test_legacy_text_starting_with_a_tag_counts_once(self):  # only the event_msg copy is read
+        s = self.read([meta(), user(ts(50), "<b>bold</b> it"), legacy(ts(50), "<b>bold</b> it")])
+        self.assertEqual(s.prompts, [(ts(50), "<b>bold</b> it")])
+
     def test_both_formats_split_across_reads(self):  # criterion 5, the two lines arrive in different update() calls
         path = self.write([meta(), user(ts(50), "fix")])
         s = CodexSession(path)
@@ -111,6 +124,35 @@ class CodexPrompts(unittest.TestCase):
         self.assertIsNone(_load_one(sub, NOW, 7 * 86400, CodexSession))
         run = self.write([meta("exec"), user(ts(50), "do x")])
         self.assertIsNotNone(_load_one(run, NOW, 7 * 86400, CodexSession))
+
+    def test_a_fork_keeps_its_own_session_meta(self):  # criterion 7: a subagent log copies its parent's meta
+        parent = {"type": "session_meta", "timestamp": ts(90), "payload": {
+            "id": "parent", "cwd": "/w/other", "source": "vscode", "thread_source": "user"}}
+        child = {"type": "session_meta", "timestamp": ts(90), "payload": {
+            "id": "child", "cwd": "/w/repo", "source": {"subagent": {}}, "thread_source": "subagent",
+            "forked_from_id": "parent"}}
+        s = self.read([child, parent, user(ts(50), "copied parent prompt")])
+        self.assertEqual((s.id, s.cwd, s.subagent, s.prompts), ("child", "/w/repo", True, []))
+        s = self.read([meta(), parent, user(ts(50), "x")])  # a later meta does not replace the first one either
+        self.assertEqual((s.id, s.cwd), ("c1", "/w/repo"))
+
+    def test_thread_source_subagent_with_a_string_source(self):  # criterion 7
+        path = self.write([{"type": "session_meta", "timestamp": ts(90), "payload": {
+            "id": "c", "source": "vscode", "thread_source": "subagent"}}, user(ts(50), "do x")])
+        self.assertIsNone(_load_one(path, NOW, 7 * 86400, CodexSession))
+
+    def test_half_written_last_line_waits(self):  # criterion 8
+        path = self.write([meta()])
+        line = json.dumps(user(ts(50), "fix"))
+        with path.open("a") as f:
+            f.write(line[:20])
+        s = CodexSession(path)
+        s.update()
+        self.assertEqual(s.prompts, [])
+        with path.open("a") as f:
+            f.write(line[20:] + "\n")
+        s.update()
+        self.assertEqual(s.prompts, [(ts(50), "fix")])
 
     def test_malformed_lines_are_skipped(self):  # criterion 8
         bad = {"type": "response_item", "timestamp": ts(55), "payload": {"type": "message", "role": "user"}}
