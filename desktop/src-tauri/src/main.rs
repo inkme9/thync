@@ -41,11 +41,13 @@ fn hub() -> Result<String, String> {
         .ok_or_else(|| "config.json 의 port 를 읽지 못했어요".to_string())
 }
 
-/// `port` as the hub reads it (`int(...)`): a number or a numeric string; 8765 when there is none.
+/// `port` as the hub reads it (`int(...)`): a number or a numeric string; 8765 when the key is absent. A config the
+/// hub cannot start with (`"port": null`, a root that is not an object) gives None.
 fn port_of(config: Option<&serde_json::Value>) -> Option<u16> {
     use serde_json::Value;
-    match config.map(|c| &c["port"]) {
-        None | Some(Value::Null) => Some(8765),
+    let Some(config) = config else { return Some(8765) };
+    match config.as_object()?.get("port") {
+        None => Some(8765),
         Some(Value::Number(n)) => n.as_u64().and_then(|p| u16::try_from(p).ok()),
         Some(Value::String(s)) => s.trim().parse().ok(),
         Some(_) => None,
@@ -185,5 +187,7 @@ mod tests {
         assert_eq!(port_of(Some(&json!({"port": 70000}))), None);
         assert_eq!(port_of(Some(&json!({"port": "abc"}))), None);
         assert_eq!(port_of(Some(&json!({"port": [8766]}))), None);
+        assert_eq!(port_of(Some(&json!({"port": null}))), None);
+        assert_eq!(port_of(Some(&json!([]))), None);
     }
 }
