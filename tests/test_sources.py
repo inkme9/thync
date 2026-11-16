@@ -59,6 +59,7 @@ class GitHub(unittest.TestCase):
         def run(cmd, env=None, **kw):
             self.assertEqual(cmd[:2], ["mien", "exec"])
             self.assertNotIn("GH_TOKEN", env)  # an inherited token never stands in for a profile's own
+            self.assertEqual(env["GH_CONFIG_DIR"], str(github.NO_LOGIN))  # nor does gh's own login
             if cmd[2] == "b" and fail:
                 raise subprocess.CalledProcessError(1, cmd, stderr="HTTP 502")
             if "search/issues" not in cmd:

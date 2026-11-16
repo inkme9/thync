@@ -10,13 +10,16 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ..config import GITHUB_PROFILES, HOME, MAX_DAYS, REVIEW_TTL_SEC, SESSIONS
+from ..config import GITHUB_PROFILES, HOME, MAX_DAYS, REVIEW_TTL_SEC, SESSIONS, STATE_DIR
 
 ACCOUNTS = GITHUB_PROFILES or [""]  # "" = gh's active account
 MIEN = shutil.which("mien") or "mien"
+# gh settings folder without any login, for profile calls: gh then has only the token mien hands it.
+NO_LOGIN = STATE_DIR / "gh-no-login"
 MAX_BRANCHES = 20  # pushed branches whose head commit message is fetched
 _seen_by: dict[str, str] = {}  # PR url -> account that listed it, so its reviews are read and posted as that account
 _lists: dict[str, dict[str, list]] = {}  # account -> "reviews" | "sent" | "commits" -> what GitHub last returned
@@ -36,8 +39,10 @@ def gh(account: str, *args: str, stdin: str | None = None, timeout: int = 60) ->
     cmd, env = ["gh", *args], None
     if account:
         cmd = [MIEN, "exec", account, "--", *cmd]
-        # Drop a token this process inherited, so a profile without GitHub cannot pass it on as its own.
-        env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
+        # A profile without GitHub must fail, not borrow another account: drop the token this process inherited,
+        # and point gh away from its own logins.
+        NO_LOGIN.mkdir(parents=True, exist_ok=True)
+        env = {**{k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}, "GH_CONFIG_DIR": str(NO_LOGIN)}
     # From home: mien refuses a profile in a folder another profile claims, such as this repository.
     return subprocess.run(cmd, input=stdin, cwd=HOME, env=env, capture_output=True, text=True, encoding="utf-8",
                           timeout=timeout, check=True).stdout
@@ -232,6 +237,8 @@ def refresh(now: float) -> None:
 
 
 def refresh_forever() -> None:
+    if GITHUB_PROFILES and not shutil.which("mien"):
+        print("thync: github_profiles needs mien on PATH; GitHub lists stay empty", file=sys.stderr, flush=True)
     while True:
         refresh(time.time())
         time.sleep(REVIEW_TTL_SEC)
