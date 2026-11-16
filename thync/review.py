@@ -15,6 +15,8 @@ import threading
 import time
 from pathlib import Path
 
+from .sources import github
+from .sources.github import gh
 from .store import load_reflexes, save_reflex
 
 CLAUDE_BIN = shutil.which("claude") or "claude"
@@ -37,11 +39,6 @@ PROMPT = """이 폴더의 pr.json(PR 정보), diff.patch(변경 내용), lines.t
 - 확실하지 않은 것은 지적하지 않는다."""
 
 _lock = threading.Lock()
-
-
-def gh(*args: str, stdin: str | None = None) -> str:
-    return subprocess.run(["gh", *args], input=stdin, capture_output=True, text=True, encoding="utf-8", timeout=120,
-                          check=True).stdout
 
 
 def commentable(diff: str) -> dict[tuple[str, int], str]:
@@ -106,15 +103,16 @@ def run_claude(folder: str) -> dict:
 def review(url: str, record: dict) -> None:
     slug, number = "/".join(url.split("/")[3:5]), url.rstrip("/").rsplit("/", 1)[-1]
     folder = tempfile.mkdtemp(prefix="thync-review-")
+    account = github.account_for(url)  # the account whose review was requested
     try:
-        pr = json.loads(gh("api", f"repos/{slug}/pulls/{number}", "--jq",
+        pr = json.loads(gh(account, "api", f"repos/{slug}/pulls/{number}", "--jq",
                            "{title, body, author: .user.login, base: .base.ref, head: .head.ref, sha: .head.sha}"))
         done = f"{pr['sha']}:{record['approve']}"  # asking for approve after a plain review is a new request
         if done == record.get("reviewed"):
             # Re-dropping the same PR would post the same review twice; a new push gets a new review.
             save_reflex(url, {**record, "status": "same", "finished": int(time.time())})
             return
-        diff = gh("pr", "diff", url)
+        diff = gh(account, "pr", "diff", url, timeout=120)
         truncated = len(diff.encode()) > MAX_DIFF
         diff = diff.encode()[:MAX_DIFF].decode(errors="ignore")
         Path(folder, "pr.json").write_text(json.dumps(pr, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -124,7 +122,7 @@ def review(url: str, record: dict) -> None:
         payload = build_review(run_claude(folder), diff, truncated, record["approve"])
         # One call, pinned to the commit that was reviewed: a push after the fetch cannot ride on the approval.
         payload["commit_id"] = pr["sha"]
-        gh("api", f"repos/{slug}/pulls/{number}/reviews", "--input", "-", stdin=json.dumps(payload))
+        gh(account, "api", f"repos/{slug}/pulls/{number}/reviews", "--input", "-", stdin=json.dumps(payload), timeout=120)
         status = "approved" if payload["event"] == "APPROVE" else "posted"
         save_reflex(url, {**record, "status": status, "reviewed": done, "finished": int(time.time())})
     except Exception as e:  # noqa: BLE001 — whatever failed, the card must stop saying "running"

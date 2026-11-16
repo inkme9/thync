@@ -6,9 +6,11 @@ It only reads; nothing an agent sends reaches GitHub, Jira or the card files.
 """
 import json
 import sys
+import time
 
-from .config import MAX_DAYS
+from .config import MAX_DAYS, REVIEW_TTL_SEC, SOURCES
 from .graph import build_graph
+from .sources import github
 
 TOOL = {
     "name": "thync_now",
@@ -23,6 +25,9 @@ TOOL = {
 
 
 def now(profile: str | None = None, days: int = 7) -> str:
+    # No background thread here, so GitHub is fetched on the call that finds it stale.
+    if "github" in SOURCES and time.time() - github.refreshed > REVIEW_TTL_SEC:
+        github.refresh(time.time())
     return summarize(build_graph(max(1, min(int(days), MAX_DAYS))), profile)
 
 

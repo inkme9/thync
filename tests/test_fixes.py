@@ -40,7 +40,7 @@ class FixesTest(unittest.TestCase):
             self.assertIn("chmod 600", err.getvalue())
 
     def test_failed_slug_lookup_is_retried(self):
-        fail = subprocess.CompletedProcess([], 1, "", "boom")
+        fail = subprocess.CalledProcessError(1, "gh", stderr="boom")
         ok = subprocess.CompletedProcess([], 0, "New/Name\n", "")
         with mock.patch.object(github.subprocess, "run", side_effect=[fail, ok]):
             self.assertEqual(github.canonical_slug("Old/Repo-x"), "old/repo-x")
@@ -49,7 +49,7 @@ class FixesTest(unittest.TestCase):
     def test_same_commit_is_not_reviewed_twice(self):
         calls = []
 
-        def gh(*args, stdin=None):
+        def gh(account, *args, stdin=None, timeout=20):
             calls.append(args[:2])
             return json.dumps({"title": "t", "body": "", "author": "a", "base": "main", "head": "f", "sha": "abc"})
 

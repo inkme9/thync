@@ -36,6 +36,8 @@ REFLEX_SKILL = {"sent": "pr-review-watch", **CONFIG.get("reflex_skills", {})}
 # Where work comes from: "claude_code" and "codex" (session logs), "github" (reviews, my PRs, my commits), "jira",
 # "notion", "obsidian" (notes edited in the vaults of `obsidian_vaults`).
 SOURCES = set(CONFIG.get("sources", ["claude_code", "codex", "github", "jira", "notion", "obsidian"]))
+# mien profiles whose GitHub accounts are all read, e.g. ["work", "personal"]; empty = gh's active account only.
+GITHUB_PROFILES = [str(p).strip() for p in CONFIG.get("github_profiles", []) if str(p).strip()]
 # Other machines whose sessions this thync shows too. Each runs its own thync and is reached over SSH:
 # [{"name": "devbox1", "ssh": "devbox1"}] (docs/configuration.md, "여러 서버를 한 화면에서").
 REMOTES = [{"name": str(r["name"]), "ssh": str(r["ssh"]), "port": int(r.get("port", 8765)),
@@ -133,7 +135,7 @@ LIVE_FILE_SEC = 10 * 60          # files edited this recently glow
 FILES_SEC = 60 * 60              # files edited this recently become nodes
 LIVE_SESSION_SEC = 24 * 3600     # sessions talked to this recently are "in progress"
 ACTIVITY_SEC = 30 * 60 if SESSIONS else 24 * 3600  # live activity feed window
-REVIEW_TTL_SEC = 120             # how long GitHub results are reused
+REVIEW_TTL_SEC = 120             # how often GitHub is fetched again
 DEFAULT_DAYS, MAX_DAYS = 7, 30   # period selector
 
 # --- Brain model (sources in docs/brain-model.md). Only WORKSPACE_SIZE comes from a paper. ---

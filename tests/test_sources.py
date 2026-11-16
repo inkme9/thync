@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import subprocess
 import tempfile
 import time
 import unittest
@@ -50,9 +51,32 @@ class GitHub(unittest.TestCase):
                   {"isResolved": True, "isOutdated": False, "path": "a.py", "line": 1, "comments": {"nodes": []}},
                   {"isResolved": False, "isOutdated": True, "path": "b.py", "line": None,
                    "comments": {"nodes": [{"author": {"login": "mina"}, "body": "why?", "createdAt": "t", "url": "u"}]}}]}}
-        got = github.parse_reviews(pr, "me")
+        got = github.parse_reviews(pr, {"me"})
         self.assertEqual([(r["author"], r["state"]) for r in got["reviews"]], [("", "APPROVED"), ("mina", "CHANGES_REQUESTED")])
         self.assertEqual([t["path"] for t in got["threads"]], ["b.py", "a.py"])  # unresolved first
+
+    def test_accounts_are_merged_and_a_failing_one_keeps_its_last_list(self):
+        def run(cmd, env=None, **kw):
+            self.assertEqual(cmd[:2], ["mien", "exec"])
+            self.assertNotIn("GH_TOKEN", env)  # an inherited token never stands in for a profile's own
+            if cmd[2] == "b" and fail:
+                raise subprocess.CalledProcessError(1, cmd, stderr="HTTP 502")
+            if "search/issues" not in cmd:
+                raise subprocess.CalledProcessError(1, cmd)  # only review requests matter here
+            urls = {"a": ["u1", "u2"], "b": ["u2", "u3"]}[cmd[2]]
+            return subprocess.CompletedProcess(cmd, 0, json.dumps({"items": [{"html_url": u} for u in urls]}), "")
+
+        fail = False
+        with mock.patch.multiple(github, ACCOUNTS=["a", "b"], MIEN="mien", _seen_by={}, _lists={}), \
+                mock.patch.dict(os.environ, {"GH_TOKEN": "inherited"}), \
+                mock.patch.object(github.subprocess, "run", side_effect=run):
+            for a in ("a", "b"):
+                github._refresh_account(a, 0)
+            self.assertEqual([it["html_url"] for it in github.review_requests()], ["u1", "u2", "u3"])
+            self.assertEqual((github.account_for("u2"), github.account_for("u3")), ("a", "b"))
+            fail = True
+            github._refresh_account("b", 0)
+            self.assertEqual(len(github.review_requests()), 3)  # b's last list is kept
 
     def test_graph_lists_reviews_others_left_on_my_prs(self):
         at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 600))
