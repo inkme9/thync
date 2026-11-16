@@ -162,6 +162,19 @@ class HandoffTest(unittest.TestCase):
                                      call=lambda n: reflex.start_reflex(n, None, "other"))
         self.assertEqual((status, self.saved), (409, {}))
 
+    def test_unclaimed_clone_runs_as_the_profile_that_lists_the_pr(self):
+        machine = FakeMachine(author="alice", profile="")
+        status, plan = self.run_handoff(pr_node("review"), machine, call=lambda n: reflex.plan_reflex(n, "cryptolab"))
+        self.assertEqual((status, plan["profile"]), (200, "cryptolab"))
+        gh_calls = [c for c in machine.calls if "gh" in c]
+        self.assertTrue(gh_calls and all(c[:4] == ["mien", "exec", "cryptolab", "--"] for c in gh_calls))
+        # ...never borrowing gh's own login or an inherited token for the account check
+        env = machine.envs["mien exec"]
+        self.assertTrue(env["GH_CONFIG_DIR"] and "GH_TOKEN" not in env)
+        status, _ = self.run_handoff(pr_node("review"), FakeMachine(author="alice", profile=""),
+                                     call=lambda n: reflex.plan_reflex(n, ""))
+        self.assertEqual(status, 409)  # no claim and no listing profile: nothing to run as
+
     def test_check_shows_the_plan_and_starts_nothing(self):
         machine = FakeMachine(author="alice")
         status, plan = self.run_handoff(pr_node("review"), machine, call=reflex.plan_reflex)

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .config import COMPANY_ROOTS, HOME, STATE_DIR
 from .sources.claude_code import known_sessions, repo_of
-from .sources.github import canonical_slug
+from .sources.github import NO_LOGIN, canonical_slug
 from .store import load_reflexes, save_reflex
 
 WORKFLOW = {"review": "concord:review-until-approve", "sent": "concord:pr-to-merge"}
@@ -125,7 +125,13 @@ def skill_installed(skill: str) -> bool:
 
 
 def _run(argv: list[str], cwd: str) -> str:
-    out = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, encoding="utf-8", timeout=30)
+    env = None
+    if argv[0] == "mien":
+        # As sources/github.gh: a profile without GitHub must fail, not borrow gh's own login or an inherited token.
+        NO_LOGIN.mkdir(parents=True, exist_ok=True)
+        env = {**{k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")},
+               "GH_CONFIG_DIR": str(NO_LOGIN)}
+    out = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", timeout=30)
     if out.returncode != 0:
         raise RuntimeError(out.stderr.strip()[-200:] or f"exit {out.returncode}")
     return out.stdout.strip()
@@ -160,21 +166,24 @@ def plan_reflex(node: dict, listed: str | None = "") -> tuple[int, dict]:
                      and r.get("skill") == skill and "tmux" in r and tmux_alive(r["tmux"])), None)
         if busy:
             return 409, {"message": f"{clone} 에서 다른 PR 의 pr-to-merge 가 돌고 있어요 (tmux attach -t {busy})"}
-    profile, prefix = "", []
+    if listed is None:
+        return 409, {"message": f"{slug}#{number} 를 목록에 올린 계정이 없어 맡길 수 없어요"}
+    claimed = ""
     if shutil.which("mien"):
         # Without MIEN_PROFILE, which mien would report ahead of the clone's own claim.
         env = {k: v for k, v in os.environ.items() if k != "MIEN_PROFILE"}
         out = subprocess.run(["mien", "which"], cwd=clone, env=env, capture_output=True, text=True, timeout=30)
-        profile = out.stdout.strip().splitlines()[-1] if out.returncode == 0 and out.stdout.strip() else ""
-        if not profile:
-            return 409, {"message": f"{clone} 를 맡은 mien 프로필이 없어요 (mien claim <프로필>)"}
-        prefix = ["mien", "exec", profile, "--"]
-    if listed is None:
-        return 409, {"message": f"{slug}#{number} 를 목록에 올린 계정이 없어 맡길 수 없어요"}
-    if listed and listed != profile:
+        claimed = out.stdout.strip().splitlines()[-1] if out.returncode == 0 and out.stdout.strip() else ""
+    elif listed:
+        return 503, {"message": f"목록에 올린 mien 프로필({listed})로 실행하려면 이 머신에 mien 이 있어야 해요"}
+    if listed and claimed and listed != claimed:
         # The review was requested of, or the PR written by, the listing profile's account; run as that one only.
         return 409, {"message": f"{slug}#{number} 를 목록에 올린 프로필({listed})이 {clone} 를 맡은 프로필"
-                                f"({profile or '없음'})과 달라요"}
+                                f"({claimed})과 달라요"}
+    profile = claimed or listed  # an unclaimed clone runs as the profile whose account lists the PR
+    if shutil.which("mien") and not profile:
+        return 409, {"message": f"{clone} 를 맡은 mien 프로필이 없어요 (mien claim <프로필>)"}
+    prefix = ["mien", "exec", profile, "--"] if profile else []
     try:
         login = _run([*prefix, "gh", "api", "user", "--jq", ".login"], clone)
         pr = json.loads(_run([*prefix, "gh", "api", f"repos/{slug}/pulls/{number}", "--jq",
