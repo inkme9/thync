@@ -290,6 +290,19 @@ class RemoteUrlTest(unittest.TestCase):
         reflex.ssh_host.cache_clear()
 
 
+class FindCloneTest(unittest.TestCase):
+    def test_exact_origin_wins_without_asking_github_about_other_clones(self):
+        root = Path(tempfile.mkdtemp())
+        for name in ("a-other", "b-target"):
+            (root / name / ".git").mkdir(parents=True)
+        origins = {str(root / "a-other"): "x/other", str(root / "b-target"): "o/r"}
+        with mock.patch.object(reflex, "COMPANY_ROOTS", [str(root)]), mock.patch.object(reflex, "known_sessions", list), \
+                mock.patch.object(reflex, "origin_of", lambda path: origins[path]), \
+                mock.patch.object(reflex, "canonical_slug") as canonical:
+            self.assertEqual(reflex.find_clone("O/R", "r"), str(root / "b-target"))
+        canonical.assert_not_called()  # a rename lookup is a GitHub call per clone
+
+
 class RunLabelTest(unittest.TestCase):
     def test_labels_follow_tmux_session_log_and_exit_code(self):
         alive = {"alive": True, "exit": None}

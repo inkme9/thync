@@ -101,22 +101,22 @@ def github_slug(remote: str) -> str:
     return path.lower() if host == "github.com" and path.count("/") == 1 else ""
 
 
-def origin_matches(path: str, slug: str) -> bool:
-    """Whether `path` is a git clone whose origin is the GitHub repository `owner/name` (renames included)."""
+def origin_of(path: str) -> str:
+    """'owner/name' of the GitHub repository a clone's origin points at, or "" when it is not a GitHub clone."""
     if not Path(path).is_dir():
-        return False
+        return ""
     out = subprocess.run(["git", "-C", path, "remote", "get-url", "origin"], capture_output=True, text=True, timeout=10)
-    remote = github_slug(out.stdout) if out.returncode == 0 else ""
-    if not remote:  # only a GitHub remote can be looked up there
-        return False
-    return remote == slug.lower() or canonical_slug(remote) == canonical_slug(slug)
+    return github_slug(out.stdout) if out.returncode == 0 else ""
 
 
 def find_clone(slug: str, repo: str) -> str | None:
     # Standalone clones under the configured roots first; session folders may be submodules.
     candidates = [str(p) for r in COMPANY_ROOTS for p in sorted(Path(r).glob("*/")) if (p / ".git").is_dir()]
     candidates += [s.cwd.split("/.claude/worktrees/")[0] for s in known_sessions() if s.cwd and repo_of(s.cwd) == repo]
-    return next((c for c in dict.fromkeys(candidates) if origin_matches(c, slug)), None)
+    origins = {c: origin_of(c) for c in dict.fromkeys(candidates)}
+    # An exact match first; asking GitHub about every other clone's name (renames) costs seconds per clone.
+    exact = next((c for c, o in origins.items() if o == slug.lower()), None)
+    return exact or next((c for c, o in origins.items() if o and canonical_slug(o) == canonical_slug(slug)), None)
 
 
 def skill_installed(skill: str) -> bool:
