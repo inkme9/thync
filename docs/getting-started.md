@@ -10,7 +10,7 @@
 - 선택: Jira Cloud API 토큰 — 나에게 배정된 티켓 ([연결 설정](configuration.md#jira와-notion-연결))
 - 선택: Notion integration 토큰 — 최근에 고친 Notion 페이지
 - 선택: [Claude Code](https://docs.claude.com/en/docs/claude-code) 세션 로그 (`~/.claude/projects/`) — 세션 단위의 집중과 백그라운드
-- 선택: `claude` CLI — PR을 Claude에게 맡기는 기능. 세션 로그도 읽을 때만 활성화됩니다. 내 PR을 맡길 때는 `tmux`도 필요합니다
+- 선택: `claude` CLI — PR을 Claude에게 맡기는 기능. 세션 로그도 읽을 때만 활성화됩니다. 맡기려면 `tmux`, `gh`, Concord 플러그인, PR 저장소의 로컬 클론도 필요합니다([실행 조건](handoff.md#실행-조건))
 
 Claude Code를 쓰지 않거나 세션 내용을 보이고 싶지 않으면 `sources`에서 `claude_code`를 제외합니다([출처 설정](configuration.md#설정-키)). 그러면 세션 로그를 전혀 읽지 않고, 커밋·티켓 변경·페이지 수정 시각으로 집중과 백그라운드를 정합니다.
 

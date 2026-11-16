@@ -67,7 +67,7 @@ cat "${THYNC_HOME:-$HOME/.thync}/token"
 
 설정과 수집 데이터는 기본적으로 `~/.thync/`에 저장합니다. 웹 서버는 `127.0.0.1`에서 실행하며, 데이터 조회와 변경에는 접근 토큰이 필요합니다.
 
-GitHub·Jira·Notion 활동은 각 서비스에서 조회합니다. Jira와 Notion에는 쓰지 않습니다. PR을 위임하면 Claude CLI가 관련 내용을 처리하며, 다른 사람의 PR 리뷰 결과는 GitHub에 게시합니다. 내 PR에 실행한 스킬은 코드를 수정하고 push할 수 있습니다. 자세한 범위는 [데이터와 보안](docs/security.md)에 설명합니다.
+GitHub·Jira·Notion 활동은 각 서비스에서 조회합니다. Jira와 Notion에는 쓰지 않습니다. PR을 위임하면 Claude CLI가 관련 내용을 처리합니다. 다른 사람의 PR에는 Concord 작업이 리뷰와 승인을 게시하고, 내 PR에서는 코드를 수정해 push하고 조건을 채우면 그 PR을 병합합니다. 자세한 범위는 [데이터와 보안](docs/security.md)에 설명합니다.
 
 ## 더 알아보기
 
