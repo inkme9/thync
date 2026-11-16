@@ -51,14 +51,27 @@ function nearestLobe(p: Vec3): LobeName {
   return best;
 }
 
-// When a tier runs out of spots, step around the same spots.
+// Semi-axes of the brain's outline (vendor shape.ts brainPoint); the lower half is squashed. A node is kept within
+// EDGE of the outline so a long list of units, or a wide scatter, never ends up outside the brain.
+const AXES = { x: 0.95, up: 0.92, down: 0.69, z: 1.25 };
+const EDGE = 0.97;
+export function insideBrain(p: Vec3): Vec3 {
+  const e = Math.hypot(p.x / AXES.x, p.y / (p.y < 0 ? AXES.down : AXES.up), p.z / AXES.z);
+  return e <= EDGE ? p : { x: (p.x * EDGE) / e, y: (p.y * EDGE) / e, z: (p.z * EDGE) / e };
+}
+
+// When a tier runs out of spots, later units fill the space around the same spots: each lap takes the next
+// direction of a golden-angle spiral, a little farther out (cube root, so the volume fills evenly).
 function tierSpot(tier: number, i: number): Vec3 {
   const spots = TIER_SPOTS[tier];
   const base = spots[i % spots.length];
   const lap = Math.floor(i / spots.length);
   if (!lap) return base;
-  const a = lap * 2.1;
-  return { x: base.x + 0.13 * Math.cos(a), y: base.y + 0.1 * Math.sin(a), z: base.z + 0.06 * lap };
+  const r = 0.12 * Math.cbrt(lap);
+  const theta = lap * 2.399963;
+  const phi = Math.acos(1 - 2 * ((lap * 0.618034) % 1));
+  return insideBrain({ x: base.x + r * Math.sin(phi) * Math.cos(theta), y: base.y + r * Math.cos(phi),
+    z: base.z + r * Math.sin(phi) * Math.sin(theta) });
 }
 
 // Title color of a unit: its strongest role, else its profile.
@@ -103,7 +116,7 @@ export function toGraph(): BrainGraph {
     const hubLike = n.id === unit || isSource(n);
     const spread = TIER_SPREAD[tier] * (hubLike ? 0.45 : 1);
     const own = COLLECTION_UNITS.has(unit) ? tierSpot(tier, hash(n.id) % (TIER_SPOTS[tier].length * 2)) : undefined;
-    at.set(n.id, spineAt.get(n.id) ?? placeNear(n.id, own ?? anchorOf.get(unit) ?? TIER_SPOTS[2][0], own ? 0.05 : spread));
+    at.set(n.id, spineAt.get(n.id) ?? insideBrain(placeNear(n.id, own ?? anchorOf.get(unit) ?? TIER_SPOTS[2][0], own ? 0.05 : spread)));
   }
   // A repository in "common" sits at the center of the work it joins, so a repository several units use
   // draws lines between them. One with nothing on the brain to join is left off.
@@ -118,7 +131,7 @@ export function toGraph(): BrainGraph {
     const ps = near.get(n.id);
     if (n.detail.unit !== "common" || !ps) continue;
     const mid = (k: "x" | "y" | "z") => ps.reduce((sum, p) => sum + p[k], 0) / ps.length;
-    at.set(n.id, placeNear(n.id, { x: mid("x"), y: mid("y"), z: mid("z") }, 0.05));
+    at.set(n.id, insideBrain(placeNear(n.id, { x: mid("x"), y: mid("y"), z: mid("z") }, 0.05)));
   }
 
   const nodes: BrainNode[] = keep.filter((n) => at.has(n.id)).map((n) => {
