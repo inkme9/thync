@@ -96,15 +96,8 @@ fn show_main(app: &AppHandle) -> Result<(), String> {
     let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
         .title("thync")
         .inner_size(1400.0, 900.0)
-        // A board card sets location.href; a note link in the detail panel calls window.open.
+        // An obsidian:// link navigates this window (a note's link in the detail panel); keep the page, open Obsidian.
         .on_navigation(|url| !open_in_obsidian(url))
-        .on_new_window(|url, _| {
-            if open_in_obsidian(&url) {
-                tauri::webview::NewWindowResponse::Deny
-            } else {
-                tauri::webview::NewWindowResponse::Allow
-            }
-        })
         .build()
         .map_err(|e| e.to_string())?;
     w.set_focus().map_err(|e| e.to_string())

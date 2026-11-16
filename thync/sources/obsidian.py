@@ -25,7 +25,7 @@ READ_BYTES = 256 * 1024   # only the head of a note is read
 SCAN_SEC = 30             # pause between scans; also how stale a result may be before a caller scans itself
 PER_NOTE = 10             # PR urls kept per note (graph.py applies the same limit to Jira keys)
 
-FENCE = re.compile(r"^[ \t]*(```|~~~).*?(?:^[ \t]*\1[`~]*[ \t]*$|\Z)", re.S | re.M)  # an open fence runs to the end
+FENCE = re.compile(r"^[ \t]*(```|~~~).*?(?:^[ \t]*\1(?:(?<=`)`*|(?<=~)~*)[ \t]*$|\Z)", re.S | re.M)  # an open fence runs to the end
 INLINE_CODE = re.compile(r"`[^`\n]*`")
 FRONT = re.compile(r"\A---[ \t]*\n(.*?)^---[ \t]*$", re.S | re.M)
 FRONT_TAGS = re.compile(r"^tags?:[ \t]*(.*)\n((?:[ \t]*-[ \t]*.*\n?)*)", re.M)
@@ -126,6 +126,10 @@ def scan(now: float) -> list[dict]:
     notes = []
     for at, vault, path in sorted(files, key=lambda f: f[0], reverse=True)[:MAX_NOTES]:
         try:
+            path.encode("utf-8")
+        except UnicodeEncodeError:
+            continue  # a Linux file name that is not UTF-8: its title and path could not be sent as JSON
+        try:
             # O_NOFOLLOW: a file swapped for a symlink since the listing must not lead out of the vault.
             # O_NONBLOCK and fstat: one swapped for a FIFO must not stall the scan.
             fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
@@ -144,7 +148,7 @@ def scan(now: float) -> list[dict]:
         # A clock set wrong or a sync tool can date a file in the future; it was edited now at the latest.
         notes.append({"vault": vault["name"], "rel": rel, "title": Path(path).stem, "profile": vault["profile"],
                       "at": min(at, now),
-                      "url": "obsidian://open?path=" + urllib.parse.quote(os.fsencode(path), safe=""), **extract(text)})
+                      "url": "obsidian://open?path=" + urllib.parse.quote(path, safe=""), **extract(text)})
     order = {v["name"]: i for i, v in enumerate(OBSIDIAN_VAULTS)}
     return sorted(notes, key=lambda n: (order[n["vault"]], n["rel"]))
 
