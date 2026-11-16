@@ -1,6 +1,6 @@
 // Entry point: build the graph, start the renderer, wire the controls, and poll the server every 2 s.
 import { allLobesEnabled } from "../../vendor/brain-atlas/src/lobe-visibility.ts";
-import { fetchGraph, hasToken, setToken } from "./api.ts";
+import { currentToken, fetchGraph, setToken } from "./api.ts";
 import { renderBoard } from "./board.ts";
 import { isModalOpen, openDetail } from "./detail.ts";
 import { toGraph } from "./layout.ts";
@@ -50,10 +50,12 @@ tokenForm.addEventListener("submit", (e) => {
 
 export async function poll(): Promise<void> {
   try {
+    const sent = currentToken();
     const data = await fetchGraph();
+    if (sent !== currentToken()) return; // answered with a token replaced since; the newer request decides
     tokenForm.hidden = data !== null;
     if (!data) {
-      setStatus(hasToken() ? "토큰이 맞지 않아요 · 서버의 ~/.thync/token 내용을 넣으세요" : "토큰이 필요해요 · 서버의 ~/.thync/token 내용을 넣으세요");
+      setStatus(sent ? "토큰이 맞지 않아요 · 서버의 ~/.thync/token 내용을 넣으세요" : "토큰이 필요해요 · 서버의 ~/.thync/token 내용을 넣으세요");
       return;
     }
     state.data = data;

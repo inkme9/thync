@@ -325,7 +325,7 @@ def main() -> None:
     global TOKEN
     os.umask(0o077)
     TOKEN = load_token()
-    print(f"thync: http://{HOST}:{PORT}/  (first time: append #t=<contents of {STATE_DIR / 'token'}>)", flush=True)
+    print(f"thync: http://{HOST}:{PORT}/  (first time: enter the contents of {STATE_DIR / 'token'} on the page)", flush=True)
     # Exit through atexit on kill/pkill too, so the SSH tunnels to remotes close with the server.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     if REMOTES:

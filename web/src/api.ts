@@ -12,7 +12,7 @@ let token = recall("token") || "";
   }
 }
 
-export const hasToken = (): boolean => token !== "";
+export const currentToken = (): string => token;
 
 export function setToken(value: string): void {
   token = value.trim();
