@@ -148,7 +148,8 @@ class Scan(unittest.TestCase):
     def test_a_file_name_that_is_not_utf8_is_skipped_and_the_rest_can_be_sent_as_json(self):
         odd = str(self.vault) + "/\udcff.md"  # how os.walk returns the byte 0xff on Linux; macOS cannot store it
         real = str(write(self.vault / "note.md", "x"))
-        with self.listed(odd, real):
+        open_ = os.open  # macOS cannot store such a name: open the real file in its place
+        with self.listed(odd, real), mock.patch("os.open", lambda p, *a: open_(real if p == odd else p, *a)):
             notes = obsidian.scan(time.time())
         self.assertEqual(self.rels(notes), ["note.md"])
         json.dumps(notes, ensure_ascii=False).encode()  # what the server and the MCP server send
