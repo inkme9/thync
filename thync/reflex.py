@@ -4,6 +4,7 @@ Someone else's PR -> /concord:review-until-approve, my PR -> /concord:pr-to-merg
 interactive Claude Code session in tmux, in a local clone of the PR's repository, as the mien profile that claims the
 clone. plan_reflex() checks everything and starts nothing; start_reflex() checks again and starts the session.
 """
+import functools
 import hashlib
 import json
 import os
@@ -74,14 +75,39 @@ def run_state(record: dict) -> dict:
     return {"alive": alive, "exit": code}
 
 
+REMOTE_URL = re.compile(r"^(?:([a-z+]+)://)?(?:[^@/]+@)?([^/:]+)(?::\d+)?[:/](.+?)(?:\.git)?/?$")
+
+
+@functools.lru_cache(maxsize=64)
+def ssh_host(alias: str) -> str:
+    """The host an SSH alias such as `gh-work` stands for (its HostName in ssh config). Several GitHub accounts on
+    one machine are usually told apart by such aliases, so a clone's origin often names one instead of github.com."""
+    try:
+        out = subprocess.run(["ssh", "-G", alias], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+    except (subprocess.SubprocessError, OSError):
+        return alias
+    return next((line.split()[1].lower() for line in out.stdout.splitlines() if line.startswith("hostname ")), alias)
+
+
+def github_slug(remote: str) -> str:
+    """'owner/name' of a GitHub remote URL, through an SSH alias too; "" for any other remote."""
+    m = REMOTE_URL.match(remote.strip())
+    if not m:
+        return ""
+    scheme, host, path = m.groups()
+    host = host.lower()
+    if host != "github.com" and scheme in (None, "ssh"):
+        host = ssh_host(host)
+    return path.lower() if host == "github.com" and path.count("/") == 1 else ""
+
+
 def origin_matches(path: str, slug: str) -> bool:
     """Whether `path` is a git clone whose origin is the GitHub repository `owner/name` (renames included)."""
     if not Path(path).is_dir():
         return False
     out = subprocess.run(["git", "-C", path, "remote", "get-url", "origin"], capture_output=True, text=True, timeout=10)
-    remote, github_remote = re.subn(r"^.*github\.com[:/]", "", out.stdout.strip())
-    remote = remote.removesuffix(".git").lower()
-    if out.returncode != 0 or not remote or not github_remote:  # only a GitHub remote can be looked up there
+    remote = github_slug(out.stdout) if out.returncode == 0 else ""
+    if not remote:  # only a GitHub remote can be looked up there
         return False
     return remote == slug.lower() or canonical_slug(remote) == canonical_slug(slug)
 

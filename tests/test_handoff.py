@@ -258,6 +258,25 @@ class HandoffTest(unittest.TestCase):
         self.assertEqual(board.run_label(run, None), "실패 (종료 코드 127)")
 
 
+class RemoteUrlTest(unittest.TestCase):
+    def test_github_remotes_are_read_through_ssh_aliases(self):
+        with mock.patch.object(reflex, "ssh_host", lambda alias: {"gh-cl": "github.com"}.get(alias, alias)):
+            for url in ("git@github.com:O/R.git", "https://github.com/o/r", "https://github.com/o/r.git/",
+                        "ssh://git@github.com:22/o/r.git", "git@gh-cl:O/R.git\n", "ssh://git@gh-cl/o/r"):
+                self.assertEqual(reflex.github_slug(url), "o/r", url)
+            for url in ("git@gitlab.com:o/r.git", "git@other-alias:o/r.git", "https://gh-cl/o/r", "/srv/git/r.git",
+                        "git@github.com:o/r/extra.git"):
+                self.assertEqual(reflex.github_slug(url), "", url)
+
+    def test_ssh_alias_resolves_from_ssh_config(self):
+        reflex.ssh_host.cache_clear()
+        out = mock.Mock(stdout="user git\nhostname github.com\nport 22\n")
+        with mock.patch("subprocess.run", return_value=out) as run:
+            self.assertEqual(reflex.ssh_host("gh-cl"), "github.com")
+        self.assertEqual(run.call_args.args[0], ["ssh", "-G", "gh-cl"])
+        reflex.ssh_host.cache_clear()
+
+
 class RunLabelTest(unittest.TestCase):
     def test_labels_follow_tmux_session_log_and_exit_code(self):
         alive = {"alive": True, "exit": None}
