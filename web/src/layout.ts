@@ -9,7 +9,7 @@
 import { CHAOS, KIND_LABEL } from "../../vendor/brain-atlas/src/palette.ts";
 import { LOBE_CENTERS, spinePoint } from "../../vendor/brain-atlas/src/shape.ts";
 import type { BrainEdge, BrainGraph, BrainNode, LobeName, Vec3 } from "../../vendor/brain-atlas/src/types.ts";
-import { isSource, notableUnits, shown, state } from "./state.ts";
+import { isSource, notableUnits, onBrain, shown, state } from "./state.ts";
 import { ROLE_COLOR, ROLE_ORDER, colorOf, cut, look, palette, profileColor } from "./style.ts";
 import type { ApiNode, ApiUnit } from "./types.ts";
 
@@ -70,8 +70,8 @@ export function unitColor(unit: string, ns: ApiNode[]): string {
 }
 
 export function toGraph(): BrainGraph {
-  const keep = shown();
-  const notable = notableUnits(keep);
+  const keep = onBrain();
+  const notable = notableUnits(shown()); // same set main.ts restyles with
   const present = new Set(keep.map((n) => String(n.detail.unit)));
   const units = state.data.units.filter((u) => present.has(u.id));
   const sessionsOf = (u: ApiUnit) => keep.filter((n) => isSource(n) && n.detail.unit === u.id && !n.detail.reflex);
@@ -95,13 +95,35 @@ export function toGraph(): BrainGraph {
   const reflexes = keep.filter((n) => n.kind === "workThread" && n.detail.reflex);
   const spineAt = new Map(reflexes.map((n, i) => [n.id, spinePoint(0.15 + (0.8 * i) / Math.max(1, reflexes.length))]));
 
-  const nodes: BrainNode[] = keep.map((n) => {
+  const at = new Map<string, Vec3>();
+  for (const n of keep) {
     const unit = String(n.detail.unit);
+    if (unit === "common") continue;
     const tier = tiers.get(unit) ?? 2;
     const hubLike = n.id === unit || isSource(n);
     const spread = TIER_SPREAD[tier] * (hubLike ? 0.45 : 1);
     const own = COLLECTION_UNITS.has(unit) ? tierSpot(tier, hash(n.id) % (TIER_SPOTS[tier].length * 2)) : undefined;
-    const p = spineAt.get(n.id) ?? placeNear(n.id, own ?? anchorOf.get(unit) ?? TIER_SPOTS[2][0], own ? 0.05 : spread);
+    at.set(n.id, spineAt.get(n.id) ?? placeNear(n.id, own ?? anchorOf.get(unit) ?? TIER_SPOTS[2][0], own ? 0.05 : spread));
+  }
+  // A repository in "common" sits at the center of the work it joins, so a repository several units use
+  // draws lines between them. One with nothing on the brain to join is left off.
+  const near = new Map<string, Vec3[]>();
+  for (const [a, b] of state.data.edges) {
+    for (const [x, y] of [[a, b], [b, a]]) {
+      const p = at.get(y);
+      if (p) near.set(x, [...(near.get(x) ?? []), p]);
+    }
+  }
+  for (const n of keep) {
+    const ps = near.get(n.id);
+    if (n.detail.unit !== "common" || !ps) continue;
+    const mid = (k: "x" | "y" | "z") => ps.reduce((sum, p) => sum + p[k], 0) / ps.length;
+    at.set(n.id, placeNear(n.id, { x: mid("x"), y: mid("y"), z: mid("z") }, 0.05));
+  }
+
+  const nodes: BrainNode[] = keep.filter((n) => at.has(n.id)).map((n) => {
+    const unit = String(n.detail.unit);
+    const p = at.get(n.id)!;
     const l = look(n, notable);
     return {
       id: n.id, name: n.name, title: n.name, kind: n.kind,
@@ -114,10 +136,8 @@ export function toGraph(): BrainGraph {
   const idx: Record<string, BrainNode> = {};
   const adj: Record<string, string[]> = {};
   for (const n of nodes) { idx[n.id] = n; adj[n.id] = []; }
-  // Lines only between nodes of notable units; dim dots stay unconnected so they read as background.
-  const unitOf = new Map(keep.map((n) => [n.id, String(n.detail.unit)]));
-  const edges: BrainEdge[] = state.data.edges
-    .filter(([a, b]) => idx[a] && idx[b] && notable.has(unitOf.get(a)!) && notable.has(unitOf.get(b)!)).map(([a, b]) => ({ a, b }));
+  // Every relation between nodes on the brain is a line; the renderer brightens lines near active work.
+  const edges: BrainEdge[] = state.data.edges.filter(([a, b]) => idx[a] && idx[b]).map(([a, b]) => ({ a, b }));
   for (const e of edges) { adj[e.a].push(e.b); adj[e.b].push(e.a); }
   for (const n of nodes) n.degree = adj[n.id].length;
 

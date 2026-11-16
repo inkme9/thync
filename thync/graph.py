@@ -370,7 +370,8 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
             for nid, _, _ in members:
                 edge(nid, tid)
 
-    # Repositories shared by several units go to "common"; review requests join the unit of their ticket.
+    # A repository that is not itself a unit, and any node left without a unit, go to "common";
+    # review requests join the unit of their ticket.
     for n in nodes.values():
         if n["kind"] == "repo" and "unit" not in n["detail"]:
             n["detail"]["unit"] = n["id"] if n["id"] in units else "common"
@@ -411,6 +412,6 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
     ranked = sorted(units.values(), key=lambda u: (u["working"], u["glow"], u["updated"]), reverse=True)
     return {"schema": SCHEMA, "generated": int(now), "days": days, "focus_level": round(focus_level, 3), "handoff": HANDOFF,
             "units": ranked, "nodes": list(nodes.values()),
-            "edges": [list(e) for e in edges if e[0] in nodes and e[1] in nodes], "activity": activity[:40],
+            "edges": [list(e) for e in sorted(edges) if e[0] in nodes and e[1] in nodes], "activity": activity[:40],
             "received": sorted(received, key=lambda r: r["at"], reverse=True)[:30],
             "board": board.build_board(units, nodes, names, card_files), "hosts": remote.status()}

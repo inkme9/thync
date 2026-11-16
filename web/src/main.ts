@@ -8,7 +8,7 @@ import { reactToChanges, renderLive, resetLive } from "./live.ts";
 import { renderPanel, setStatus } from "./panel.ts";
 import { openReflex } from "./reflex.ts";
 import { renderer } from "./renderer.ts";
-import { notableUnits, recall, remember, shown, state } from "./state.ts";
+import { notableUnits, onBrain, recall, remember, shown, state } from "./state.ts";
 import { colorOf, look } from "./style.ts";
 import { checkWaiting } from "./waiting.ts";
 
@@ -17,7 +17,7 @@ export function apply(): void {
   const d = state.data;
   // Which units carry a title is part of the shape: a unit gaining or losing focus re-lays the titles.
   const notable = notableUnits(shown());
-  const sig = [state.profile, state.showAll, state.days, d.units.map((u) => u.id).join(","), d.nodes.map((n) => n.id).join(","), d.edges.length,
+  const sig = [state.profile, state.showAll, state.showLinked, state.days, d.units.map((u) => u.id).join(","), onBrain().map((n) => n.id).join(","), d.edges.map((e) => e.join(">")).join(","),
     [...notable].sort().join(",")].join("|");
   if (sig !== state.signature) {
     state.signature = sig;
@@ -97,7 +97,7 @@ renderer.start(canvas, () => state.graph, {
 });
 renderer.setView({ zoom: 1.25 });
 
-// --- Controls: profile tab, period, show past work. ---
+// --- Controls: profile tab, period, show past work, show what in-progress work links to. ---
 for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-profile]")) {
   btn.classList.toggle("on", btn.dataset.profile === state.profile);
   btn.onclick = () => {
@@ -118,13 +118,19 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("[data-days]")) {
     void poll();
   };
 }
-const showAll = document.querySelector<HTMLInputElement>("#show-all")!;
-showAll.checked = state.showAll;
-showAll.onchange = () => {
-  state.showAll = showAll.checked;
-  remember("showAll", state.showAll ? "1" : "0");
-  apply();
-};
+// Past work already includes everything linked, so the second box is greyed out while the first is on.
+const showLinked = document.querySelector<HTMLInputElement>("#show-linked")!;
+for (const key of ["showAll", "showLinked"] as const) {
+  const box = document.querySelector<HTMLInputElement>(`#${key === "showAll" ? "show-all" : "show-linked"}`)!;
+  box.checked = state[key];
+  box.onchange = () => {
+    state[key] = box.checked;
+    remember(key, box.checked ? "1" : "0");
+    showLinked.disabled = state.showAll;
+    apply();
+  };
+}
+showLinked.disabled = state.showAll;
 
 // The brain turns slowly when left alone; this button stops or restarts that, and the browser remembers it.
 const rotate = document.querySelector<HTMLButtonElement>("#rotate")!;
