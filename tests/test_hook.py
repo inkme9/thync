@@ -3,7 +3,7 @@ import os
 import tempfile
 from unittest import mock
 
-os.environ.setdefault("THYNC_HOME", tempfile.mkdtemp())  # never the real ~/.thync
+os.environ["THYNC_HOME"] = tempfile.mkdtemp()  # even when the shell sets it: tests delete card files
 
 from thync import hook  # noqa: E402
 

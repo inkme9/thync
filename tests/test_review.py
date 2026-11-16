@@ -2,7 +2,7 @@ import unittest
 import os
 import tempfile
 
-os.environ.setdefault("THYNC_HOME", tempfile.mkdtemp())  # never the real ~/.thync
+os.environ["THYNC_HOME"] = tempfile.mkdtemp()  # even when the shell sets it: tests delete card files
 
 from thync.review import build_review, commentable  # noqa: E402
 
