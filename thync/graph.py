@@ -91,7 +91,7 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
     # Sessions on this machine, then those other machines' thync servers report (sources/remote.py).
     sessions = (load_sessions(now, window) if SESSIONS else []) + remote.sessions(now, window)
     # With session logs the sessions describe my work; commits would only add a unit per branch and merge.
-    commits = github.my_commits(now) if "github" in SOURCES and not SESSIONS else []
+    commits = github.my_commits() if "github" in SOURCES and not SESSIONS else []
     pages = notion.recent_pages(now) if "notion" in SOURCES else []
     nodes: dict[str, dict] = {}
     edges: set[tuple[str, str]] = set()
@@ -157,7 +157,7 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
                 for k in BRANCH_KEY.findall(b)} | {k.split("-")[0] for k in mine}
 
     # Review requests first, so their PR nodes keep the review role and details.
-    for it in (github.review_requests(now) if "github" in SOURCES else []):
+    for it in (github.review_requests() if "github" in SOURCES else []):
         if now - epoch(it["updated_at"]) > window:
             continue
         repo = it["repository_url"].rsplit("/", 1)[-1]
@@ -301,7 +301,7 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
 
     # My PRs waiting on review. A PR a session already linked keeps its unit and gains the role.
     received = []  # the latest review from each reviewer on my PRs, for the side panel
-    for pr in (github.sent_reviews(now) if "github" in SOURCES else []):
+    for pr in (github.sent_reviews() if "github" in SOURCES else []):
         if now - epoch(pr["updatedAt"]) > window:
             continue
         repo = pr["repository"]["name"]

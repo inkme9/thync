@@ -17,7 +17,7 @@ class McpTest(unittest.TestCase):
         self.assertEqual(mcp.handle({"jsonrpc": "2.0", "id": 3, "method": "nope"})["error"]["code"], -32601)
 
     def test_tool_error_is_reported_not_raised(self):
-        with mock.patch.object(mcp, "build_graph", side_effect=OSError):
+        with mock.patch.object(mcp, "build_graph", side_effect=OSError), mock.patch.object(mcp.github, "refresh"):
             out = mcp.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "thync_now"}})
         self.assertTrue(out["result"]["isError"])
 

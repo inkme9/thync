@@ -15,6 +15,7 @@ PR을 실행하는 머신(`reflex_host`를 주면 그 서버)에 다음이 있�
 | Claude Code에 설치된 Concord 플러그인의 `review-until-approve`, `pr-to-merge` 스킬 | `~/.claude/plugins/cache/*/concord/*/skills/`에서 찾습니다. 버전은 가리지 않고, 플러그인을 꺼 두었는지는 보지 않습니다 |
 | PR 저장소의 로컬 클론 | `company_roots` 바로 아래 폴더(이름순), 그다음 알려진 세션 폴더 순서로 보고, `origin`이 PR 저장소인 첫 클론을 씁니다 |
 | 실행 계정 | `mien`이 있으면 클론을 맡은 mien 프로필(`mien which`)이 있어야 합니다. `mien`이 없으면 서버 프로세스의 `gh` 계정을 씁니다 |
+| `mien_profiles`를 쓰는 경우 | 그 PR을 목록에 올린 프로필이 클론을 맡은 프로필과 같아야 합니다. 어느 계정도 목록에 올리지 않은 PR은 맡기지 않습니다 |
 
 하나라도 없으면 확인 창이 이유를 보여 주고, 세션을 시작하지 않으며 '맡긴 일' 기록도 남기지 않습니다.
 

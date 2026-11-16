@@ -40,9 +40,8 @@ class FixesTest(unittest.TestCase):
             self.assertIn("chmod 600", err.getvalue())
 
     def test_failed_slug_lookup_is_retried(self):
-        fail = subprocess.CompletedProcess([], 1, "", "boom")
-        ok = subprocess.CompletedProcess([], 0, "New/Name\n", "")
-        with mock.patch.object(github.subprocess, "run", side_effect=[fail, ok]):
+        fail = subprocess.CalledProcessError(1, "gh", stderr="boom")
+        with mock.patch.object(github, "_run", side_effect=[fail, "New/Name\n"]):
             self.assertEqual(github.canonical_slug("Old/Repo-x"), "old/repo-x")
             self.assertEqual(github.canonical_slug("Old/Repo-x"), "new/name")
 

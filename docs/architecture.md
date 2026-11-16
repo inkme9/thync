@@ -20,7 +20,7 @@ thync는 Python 로컬 서버와 TypeScript 웹 화면으로 나뉩니다. Pytho
 ```mermaid
 flowchart TD
     Claude["Claude Code·Codex 세션 로그: 선택"] --> Graph["graph.build_graph()"]
-    GitHub["GitHub: gh 조회와 캐시"] --> Graph
+    GitHub["GitHub: 계정별 gh 조회(백그라운드)"] --> Graph
     Jira["Jira API → jira.json"] --> Graph
     Notion["Notion 검색 API와 캐시"] --> Graph
     Obsidian["Obsidian vault 폴더: 선택"] --> Graph
@@ -82,7 +82,7 @@ Obsidian 노트 본문의 Jira 키는 작업 단위를 정하지 않고 티켓�
 | `store.py` | `~/.thync`의 파일: 토큰, 바꾼 이름, 칸반 카드(Markdown), 맡긴 일 기록. 카드 폴더의 Kanban 보드 파일과 UTF-8이 아닌 파일은 카드로 읽지 않고 덮어쓰지도 않습니다 |
 | `sources/claude_code.py` | Claude Code 세션 로그를 새로 붙은 줄만 이어 읽습니다. Codex 로그도 같은 방식으로 읽습니다 |
 | `sources/codex.py` | Codex 세션 로그의 한 줄을 해석합니다. 사용자가 친 글은 프롬프트, 도구 호출은 활동으로 기록합니다. Codex가 메시지에 넣은 문맥은 프롬프트로 세지 않습니다. 규칙은 [Codex 세션의 프롬프트 읽기](design/codex-prompts.md)에 있습니다 |
-| `sources/github.py` | `gh`로 리뷰 요청, 내 PR, 내 커밋을 조회합니다. 커밋은 `search/commits`(`author:@me`, 기본 브랜치만 검색 대상)와 내 PushEvent(브랜치별 마지막 push, 그 head 커밋 메시지)를 합칩니다. 백그라운드 스레드는 1분마다 갱신을 시도하고 결과를 기본 120초 동안 재사용합니다 |
+| `sources/github.py` | `gh`로 리뷰 요청, 내 PR, 내 커밋을 조회합니다. 커밋은 `search/commits`(`author:@me`, 기본 브랜치만 검색 대상)와 내 PushEvent(브랜치별 마지막 push, 그 head 커밋 메시지)를 합치며, 세션 로그를 읽지 않을 때만 조회합니다. `mien_profiles`가 있으면 GitHub 계정이 있는 프로필마다 `mien exec <프로필> -- gh …`로 조회해 PR 주소 기준으로 합치고, PR마다 그 PR을 지금 목록에 올린 계정(리뷰 요청이 내 PR보다 먼저)을 기억합니다. 조회는 백그라운드 스레드만 120초마다 계정들을 동시에 하고, 요청은 마지막 결과만 읽습니다. 스레드가 없는 MCP 서버는 데이터가 120초보다 오래됐을 때 호출 안에서 조회합니다 |
 | `sources/jira.py` | `jira.json`의 티켓 요약과 에픽, 브랜치·제목에서 Jira 키 찾기. 설정하면 백그라운드 스레드가 그래프에 나온 키와 나에게 배정된 티켓(`/rest/api/3/search/jql`)을 Jira REST API로 받아 `jira.json`을 갱신하고, 배정된 티켓에 `mine: true`를 기록합니다 |
 | `sources/remote.py` | 다른 서버의 세션(`remotes` 설정). 서버마다 SSH 터널을 하나 열어 두고, 그 서버 thync 의 `/sessions.json`을 1.5초마다 읽어 이 서버의 세션 옆에 놓습니다. 바뀌지 않은 응답은 ETag 로 건너뜁니다. 터널이 끊기면 최대 30초 간격으로 다시 엽니다 |
 | `export.py` | `GET /sessions.json`. 이 서버의 세션을 그래프가 읽는 만큼만 잘라 내보냅니다. 프로필·저장소·PR 위임 여부·답할 수 있는 질문인지처럼 이 서버만 아는 값을 여기서 정합니다 |
@@ -174,7 +174,7 @@ Obsidian 노트 본문의 Jira 키는 작업 단위를 정하지 않고 티켓�
 
 ## `GET /reviews?url=<PR 주소>`
 
-내 PR 의 상세 창을 열 때 화면이 한 번 부릅니다. `X-Thync-Token`이 필요하고, 주소는 `https://github.com/<owner>/<repo>/pull/<번호>` 형식만 받습니다. `gh` GraphQL 한 번으로 그 PR 의 리뷰와 코멘트 스레드를 가져와 1분 동안 재사용합니다.
+내 PR 의 상세 창을 열 때 화면이 한 번 부릅니다. `X-Thync-Token`이 필요하고, 주소는 `https://github.com/<owner>/<repo>/pull/<번호>` 형식만 받습니다. `gh` GraphQL 한 번으로 그 PR 의 리뷰와 코멘트 스레드를 가져와 1분 동안 재사용합니다. `mien_profiles`가 있으면 그 PR을 목록에 올린 계정으로 `mien exec`를 거쳐 조회하므로 약 3초 걸립니다. 어느 계정도 올리지 않은 PR은 응답한 첫 계정으로 읽습니다.
 
 | 필드 | 내용 |
 | --- | --- |

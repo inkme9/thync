@@ -150,6 +150,18 @@ class HandoffTest(unittest.TestCase):
         self.assertIsNotNone(env)
         self.assertNotIn("MIEN_PROFILE", env)
 
+    def test_runs_only_as_the_profile_that_lists_the_pr(self):
+        # mien_profiles set: the listing profile must be the one that claims the clone; an unlisted PR is refused.
+        for listed, status in (("cryptolab", 200), ("other", 409), (None, 409), ("", 200)):
+            machine = FakeMachine(author="alice")
+            got, reply = self.run_handoff(pr_node("review"), machine, call=lambda n: reflex.plan_reflex(n, listed))
+            self.assertEqual(got, status, listed)
+            if status == 409:
+                self.assertEqual((machine.launches(), [c for c in machine.calls if "gh" in c]), ([], []))
+        status, _ = self.run_handoff(pr_node("review"), FakeMachine(author="alice"),
+                                     call=lambda n: reflex.start_reflex(n, None, "other"))
+        self.assertEqual((status, self.saved), (409, {}))
+
     def test_check_shows_the_plan_and_starts_nothing(self):
         machine = FakeMachine(author="alice")
         status, plan = self.run_handoff(pr_node("review"), machine, call=reflex.plan_reflex)

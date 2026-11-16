@@ -243,8 +243,10 @@ class Handler(SimpleHTTPRequestHandler):
         if REFLEX_HOST and not self.forwarded():
             # Sent on once; if the remote cannot be reached nothing runs here, under this machine's accounts.
             # The far end runs several git, mien and gh calls; a short timeout would report a start that still happens.
-            status, reply = remote.by_name(REFLEX_HOST).post("/reflex", {"node": target, "check": check, "plan": shown},
-                                                             timeout=REFLEX_FORWARD_SEC)
+            # With the profile that lists it here, which the far end must run as.
+            listed = github.account_for(str(target["detail"].get("url", "")))
+            status, reply = remote.by_name(REFLEX_HOST).post(
+                "/reflex", {"node": target, "check": check, "plan": shown, "listed": listed}, timeout=REFLEX_FORWARD_SEC)
             if status < 400 and isinstance(reply.get("plan"), dict):
                 self.send_json(status, {"plan": {**reply["plan"], "host": REFLEX_HOST}})
                 return
@@ -259,11 +261,15 @@ class Handler(SimpleHTTPRequestHandler):
         if not HANDOFF or REFLEX_HOST:
             self.send_json(503, {"message": "이 머신에는 claude CLI 나 세션 기록이 없어 PR 을 맡길 수 없어요"})
             return
+        # The profile whose account lists the PR: the hub's answer when it forwarded this, else this machine's lists.
+        listed = req.get("listed") if self.forwarded() else github.account_for(str(target["detail"].get("url", "")))
+        if listed is not None and not isinstance(listed, str):
+            raise ValueError("bad listed")
         if check:
-            status, plan = plan_reflex(target)
+            status, plan = plan_reflex(target, listed)
             self.send_json(status, {"plan": plan} if status == 200 else plan)
             return
-        status, message = start_reflex(target, shown)
+        status, message = start_reflex(target, shown, listed)
         self.send_json(status, {"message": message})
 
     def post_ask(self):

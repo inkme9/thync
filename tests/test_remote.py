@@ -176,13 +176,13 @@ class HubTest(unittest.TestCase):
         with mock.patch.object(server, "HANDOFF", True), mock.patch.object(server, "REFLEX_HOST", ""), \
                 mock.patch.object(server, "plan_reflex", return_value=(200, shown)) as plan, \
                 mock.patch.object(server, "start_reflex", return_value=(202, "시작했어요")) as start:
-            checked = self.r.post("/reflex", {"node": node, "check": True, "plan": None})
+            checked = self.r.post("/reflex", {"node": node, "check": True, "plan": None, "listed": "p"})
             self.assertEqual(start.call_count, 0)  # a check starts nothing
-            status, reply = self.r.post("/reflex", {"node": node, "check": False, "plan": shown})
+            status, reply = self.r.post("/reflex", {"node": node, "check": False, "plan": shown, "listed": "p"})
         self.assertEqual(checked, (200, {"plan": shown}))
-        self.assertEqual(plan.call_args.args[0]["detail"]["url"], node["detail"]["url"])
+        self.assertEqual((plan.call_args.args[0]["detail"]["url"], plan.call_args.args[1]), (node["detail"]["url"], "p"))
         self.assertEqual((status, reply["message"]), (202, "시작했어요"))
-        self.assertEqual((start.call_args.args[0]["detail"]["url"], start.call_args.args[1]), (node["detail"]["url"], shown))
+        self.assertEqual(start.call_args.args, (start.call_args.args[0], shown, "p"))  # the hub's listing profile
 
     def test_hub_sends_a_handoff_on_once_and_never_runs_it_itself(self):
         self.r.fetch()
@@ -198,11 +198,13 @@ class HubTest(unittest.TestCase):
 
             with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
                     mock.patch.object(server, "build_graph", return_value={"nodes": [node]}), \
+                    mock.patch.object(server.github, "account_for", return_value="work"), \
                     mock.patch.object(self.r, "post", post), \
                     mock.patch.object(server, "start_reflex") as start, mock.patch.object(server, "plan_reflex") as plan:
                 status, reply = self.call(hub, {"id": node["id"], "plan": {"login": "me"}})
                 self.assertEqual((status, reply["message"]), (202, "devbox1: 시작했어요"))
-                self.assertEqual(sent, [("/reflex", {"node": node, "check": False, "plan": {"login": "me"}},
+                # With the profile that lists the PR on the hub, which the far end must run as.
+                self.assertEqual(sent, [("/reflex", {"node": node, "check": False, "plan": {"login": "me"}, "listed": "work"},
                                          server.REFLEX_FORWARD_SEC)])
                 self.r.ok, self.r.error = False, "연결 끊김"
                 with mock.patch.object(self.r, "post", remote.Remote.post.__get__(self.r)):

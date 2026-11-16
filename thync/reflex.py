@@ -79,8 +79,9 @@ def origin_matches(path: str, slug: str) -> bool:
     if not Path(path).is_dir():
         return False
     out = subprocess.run(["git", "-C", path, "remote", "get-url", "origin"], capture_output=True, text=True, timeout=10)
-    remote = re.sub(r"^.*github\.com[:/]", "", out.stdout.strip()).removesuffix(".git").lower()
-    if out.returncode != 0 or not remote:
+    remote, github_remote = re.subn(r"^.*github\.com[:/]", "", out.stdout.strip())
+    remote = remote.removesuffix(".git").lower()
+    if out.returncode != 0 or not remote or not github_remote:  # only a GitHub remote can be looked up there
         return False
     return remote == slug.lower() or canonical_slug(remote) == canonical_slug(slug)
 
@@ -104,8 +105,10 @@ def _run(argv: list[str], cwd: str) -> str:
     return out.stdout.strip()
 
 
-def plan_reflex(node: dict) -> tuple[int, dict]:
-    """Everything start_reflex needs, checked: (200, plan) or (error status, {"message": ...}). Starts nothing."""
+def plan_reflex(node: dict, listed: str | None = "") -> tuple[int, dict]:
+    """Everything start_reflex needs, checked: (200, plan) or (error status, {"message": ...}). Starts nothing.
+    `listed` is the mien profile whose GitHub account lists the PR (sources/github.account_for): "" when thync reads
+    gh's active account only, None when no configured account lists it."""
     role = next((r for r in ("sent", "review") if r in node.get("roles", [])), None)
     m = PR_URL.fullmatch(str(node.get("detail", {}).get("url", "")))
     if not role or not m:
@@ -140,6 +143,12 @@ def plan_reflex(node: dict) -> tuple[int, dict]:
         if not profile:
             return 409, {"message": f"{clone} 를 맡은 mien 프로필이 없어요 (mien claim <프로필>)"}
         prefix = ["mien", "exec", profile, "--"]
+    if listed is None:
+        return 409, {"message": f"{slug}#{number} 를 목록에 올린 계정이 없어 맡길 수 없어요"}
+    if listed and listed != profile:
+        # The review was requested of, or the PR written by, the listing profile's account; run as that one only.
+        return 409, {"message": f"{slug}#{number} 를 목록에 올린 프로필({listed})이 {clone} 를 맡은 프로필"
+                                f"({profile or '없음'})과 달라요"}
     try:
         login = _run([*prefix, "gh", "api", "user", "--jq", ".login"], clone)
         pr = json.loads(_run([*prefix, "gh", "api", f"repos/{slug}/pulls/{number}", "--jq",
@@ -172,14 +181,14 @@ def prompt_of(plan: dict) -> str:
             f"it in thync, which started this session.")
 
 
-def start_reflex(node: dict, shown: dict | None = None) -> tuple[int, str]:
+def start_reflex(node: dict, shown: dict | None = None, listed: str | None = "") -> tuple[int, str]:
     """Check again, and start the session for a PR node unless the check differs from what the user confirmed."""
     with _start_lock:
-        return _start(node, shown)
+        return _start(node, shown, listed)
 
 
-def _start(node: dict, shown: dict | None) -> tuple[int, str]:
-    status, plan = plan_reflex(node)
+def _start(node: dict, shown: dict | None, listed: str | None) -> tuple[int, str]:
+    status, plan = plan_reflex(node, listed)
     if status != 200:
         return status, plan["message"]
     if shown is not None and any(shown.get(k) != plan[k] for k in ("url", "workflow", "profile", "login", "cwd")):

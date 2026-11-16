@@ -39,6 +39,7 @@ TL;DR
 - `mien`이 있으면 클론에서 `mien which`로 프로필을 읽습니다. 서버 프로세스에 활성화된 프로필(`MIEN_PROFILE`)이 클론의 프로필보다 먼저 나오지 않도록, 이 호출에서는 그 변수를 뺍니다. 프로필이 없으면 시작하지 않습니다. 프로필이 있으면 계정 확인(`gh api user`)과 Claude Code 프로세스 전체를 `mien exec <프로필> -- <명령>`으로 실행하고, 첫 프롬프트에도 그 프로필을 적습니다. 서버 프로세스의 기본 `gh` 계정은 쓰지 않습니다.
 - `mien exec`는 인자에서 첫 `--`를 지웁니다. 그래서 프로필 뒤에 `--`를 두어, `claude`의 옵션과 프롬프트를 나누는 `--`가 그대로 남게 합니다.
 - `mien exec`는 에이전트 하네스가 부른 것으로 보이면 자식의 출력을 파이프로 받아, 세션이 터미널 없이 돕니다. tmux 서버가 에이전트의 셸에서 시작되어 그 표시를 물려받았을 수 있으므로, 세션 명령은 mien이 보는 표시 다섯 개(`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CODEX_THREAD_ID`, `COPILOT_AGENT`, `MIEN_CAPTURED`)를 `env -u`로 지우고 시작합니다.
+- `mien_profiles`로 여러 계정의 목록을 읽으면, 리뷰 요청을 받거나 PR을 쓴 계정은 그 PR을 목록에 올린 프로필(`sources/github.account_for`)의 계정입니다. 그래서 그 프로필이 클론을 맡은 프로필과 같을 때만 시작하고, 어느 계정도 목록에 올리지 않은 PR은 맡기지 않습니다. 허브가 다른 서버로 넘길 때는 허브에서 목록에 올린 프로필을 함께 보내고, 그 서버는 그 값으로 같은 확인을 합니다.
 - `mien`이 없는 머신에서는 서버 프로세스의 `gh` 계정이 실행 계정입니다. 확인 창에 "프로필 없음"으로 보여 주고, 작성자 확인은 같은 방식으로 합니다.
 
 ## 확인과 시작
@@ -95,6 +96,7 @@ TL;DR
 | 기록 없음 | 시작, CLI·스킬 없음 | `503`과 이유. tmux·기록 변화 없음 | introduced | H `test_without_the_concord_skill_nothing_starts_or_shows_running`, `test_missing_cli_starts_nothing` |
 | 기록 없음 | 시작, 클론 없음 | `404`와 이유. tmux·기록 변화 없음 | unchanged | H `test_no_clone_or_unreadable_account_starts_nothing` |
 | 기록 없음 | 시작, `gh`가 계정이나 PR을 읽지 못함 | `502`와 `gh`의 오류. tmux·기록 변화 없음 | introduced | H `test_no_clone_or_unreadable_account_starts_nothing` |
+| 기록 없음 | 확인 또는 시작, `mien_profiles`에서 목록에 올린 프로필이 클론의 프로필과 다르거나 목록에 올린 계정이 없음 | `409`와 이유. `gh` 호출·tmux·기록 없음 | introduced | H `test_runs_only_as_the_profile_that_lists_the_pr` |
 | 기록 없음 | 시작, 화면의 `plan`과 계정·프로필·스킬·클론 경로가 다름 | `409`. tmux·기록 변화 없음 | introduced | H `test_start_refuses_when_the_check_differs_from_what_was_confirmed` |
 | 세션 돌고 있음 | 같은 PR 확인 요청(받은 리뷰 다른 줄 포함, PR이 병합된 뒤 포함) | `409`와 접속 명령. 기록과 세션 그대로 | introduced | H `test_check_of_a_running_pr_answers_with_its_session_even_when_merged` |
 | 세션 돌고 있음 | 같은 PR 시작이 확인과 tmux 생성 사이에 겹침 | `tmux new-session`이 이름을 거절해 `409`. 기록 그대로 | unchanged | H `test_second_handoff_of_a_running_pr_is_refused` |
@@ -125,7 +127,7 @@ TL;DR
 - `pr-to-merge`는 사용자가 쓰는 클론에서 내 PR을 고칩니다. 브랜치를 어떻게 다루는지는 Concord가 정합니다. 커밋하지 않은 변경이 있는 클론에서 어떻게 할지는 세션이 정합니다.
 - 리뷰 요청이 온 저장소의 클론이 없으면 맡길 수 없습니다.
 - `mien`이 없는 머신에서는 `gh api user`를 서버 프로세스의 환경에서 확인하고, 세션은 tmux 서버의 환경에서 돕니다. tmux 서버가 다른 환경으로 먼저 떠 있었다면 확인한 계정과 실행 계정이 다를 수 있습니다.
-- 클론을 찾을 때 `origin`이 PR 저장소와 이름이 다르면 저장소 이름이 바뀌었는지 `gh`로 묻습니다. 이 조회는 서버 프로세스의 기본 `gh` 계정으로 하므로, 그 계정이 볼 수 없는 비공개 저장소의 이름 변경은 찾지 못합니다.
+- 클론을 찾을 때 `origin`이 PR 저장소와 이름이 다르면 저장소 이름이 바뀌었는지 목록을 읽은 계정들에 차례로 묻습니다. 어느 계정도 볼 수 없는 비공개 저장소의 이름 변경은 찾지 못합니다.
 - 스킬 확인은 플러그인 캐시에 스킬 파일이 있는지만 봅니다. 꺼 둔 플러그인도 통과하고, 그 경우 세션이 스킬을 찾지 못한 채 '대기 중'에 머뭅니다.
 - '대기 중'은 감시 중과 입력 대기를 구분하지 않습니다. 구분하려면 세션 기록에서 백그라운드 명령 상태를 읽어야 하는데, 세션 기록 형식은 공개된 형식이 아닙니다.
 
