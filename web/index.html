@@ -172,6 +172,10 @@
     @media (max-width: 760px) {
       body { grid-template-columns: 1fr; grid-template-rows: 60vh auto; }
       aside { border-left: 0; border-top: 1px solid var(--line); }
+      /* The status line wraps on a phone; keep it above the brain instead of over it. */
+      #brain { display: flex; flex-direction: column; }
+      #hud { position: static; order: -1; margin: 12px 140px 0 16px; letter-spacing: .02em; }
+      #graph { position: relative; flex: 1; height: auto; min-height: 0; }
     }
   </style>
 </head>
