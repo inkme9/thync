@@ -126,6 +126,7 @@
     .card { position: relative; padding-right: 64px; }
     li.empty { color: var(--quiet); font-size: 12px; cursor: default; }
     .toggle { display: block; font-size: 12px; color: var(--quiet); margin: -6px 0 12px; cursor: pointer; }
+    .toggle:has(input:disabled) { opacity: 0.45; cursor: default; }
     .legend { font-size: 11px; color: var(--quiet); }
     .legend summary { cursor: pointer; }
     .legend span { display: inline-block; margin: 6px 10px 0 0; }
