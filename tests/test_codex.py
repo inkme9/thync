@@ -78,6 +78,11 @@ class CodexPrompts(unittest.TestCase):
             "<image name=[Image #1] path=/tmp/shot.png>", None, "</image>")])
         self.assertEqual(s.prompts, [(ts(50), "why is this red?")])
 
+    def test_only_input_text_blocks_are_read(self):
+        line = user(ts(50), "fix")
+        line["payload"]["content"].append({"type": "output_text", "text": "a reply"})
+        self.assertEqual(self.read([meta(), line]).prompts, [(ts(50), "fix")])
+
     def test_in_app_browser_context_keeps_the_request(self):  # criterion 3, the other heading
         s = self.read([meta(), user(
             ts(50), "<in-app-browser-context>\n# In app browser:\n- tab\n## My request for Codex:\nclick it\n")])
