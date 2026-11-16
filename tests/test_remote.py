@@ -211,6 +211,27 @@ class HubTest(unittest.TestCase):
         finally:
             hub.close()
 
+    def test_handoff_with_the_feature_off_or_a_failed_forward_starts_nothing(self):
+        self.r.fetch()
+        node = {"id": "pr:https://github.com/o/r/pull/3", "roles": ["sent"],
+                "detail": {"url": "https://github.com/o/r/pull/3", "repo": "r"}}
+        with mock.patch.object(server, "HANDOFF", False), mock.patch.object(server, "REFLEX_HOST", ""), \
+                mock.patch.object(server, "start_reflex") as start, mock.patch.object(server, "plan_reflex") as plan:
+            self.assertEqual(self.r.post("/reflex", {"node": node, "check": True})[0], 503)
+            self.assertEqual(self.r.post("/reflex", {"node": node, "plan": {}})[0], 503)
+        self.assertEqual((start.call_count, plan.call_count), (0, 0))
+        hub = RemoteThync([])
+        try:
+            with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
+                    mock.patch.object(server, "build_graph", return_value={"nodes": [node]}), \
+                    mock.patch.object(self.r, "request", side_effect=remote.RemoteError("터널 끊김")), \
+                    mock.patch.object(server, "start_reflex") as start:
+                status, reply = self.call(hub, {"id": node["id"], "plan": {}})
+            self.assertEqual((status, start.call_count), (502, 0))
+            self.assertIn("터널 끊김", reply["message"])
+        finally:
+            hub.close()
+
     def test_forwarded_handoff_on_a_machine_with_its_own_reflex_host_is_refused(self):
         self.r.fetch()
         node = {"id": "pr:https://github.com/o/r/pull/3", "roles": ["sent"],

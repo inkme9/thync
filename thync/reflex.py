@@ -10,6 +10,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -28,6 +29,8 @@ PERMISSIONS = ["--permission-mode", "auto", "--disallowedTools", "Read(~/.thync/
                "Read(~/.claude/settings.json)"]
 
 _tmux_cache: dict[str, tuple[float, bool]] = {}
+# One start at a time: the same-clone check reads reflex.json, and the record is saved only once tmux runs.
+_start_lock = threading.Lock()
 
 
 def tmux_alive(name: str) -> bool:
@@ -117,7 +120,7 @@ def plan_reflex(node: dict) -> tuple[int, dict]:
     if not clone:
         return 404, {"message": f"이 머신에서 {slug} 저장소 폴더를 찾지 못했어요"}
     if role == "sent":
-        # pr-to-merge edits and switches branches in the clone; two of them would fight over one working tree.
+        # pr-to-merge fixes my PR in the clone; two of them would share one working tree.
         busy = next((r["tmux"] for u, r in load_reflexes().items() if u != url and r.get("cwd") == clone
                      and r.get("skill") == skill and "tmux" in r and tmux_alive(r["tmux"])), None)
         if busy:
@@ -163,6 +166,11 @@ def prompt_of(plan: dict) -> str:
 
 def start_reflex(node: dict, shown: dict | None = None) -> tuple[int, str]:
     """Check again, and start the session for a PR node unless the check differs from what the user confirmed."""
+    with _start_lock:
+        return _start(node, shown)
+
+
+def _start(node: dict, shown: dict | None) -> tuple[int, str]:
     status, plan = plan_reflex(node)
     if status != 200:
         return status, plan["message"]

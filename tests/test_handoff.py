@@ -27,7 +27,7 @@ def pr_node(role: str, url: str = A) -> dict:
 class FakeMachine:
     """subprocess.run for a machine with mien, gh, tmux and a clone of o/r."""
 
-    def __init__(self, author: str, login: str = "me", profile: str = "cryptolab", tmux_rc: int = 0, state: str = "open",
+    def __init__(self, author: str, login: str | None = "me", profile: str = "cryptolab", tmux_rc: int = 0, state: str = "open",
                  draft: bool = False, alive: tuple = ()):
         self.author, self.login, self.profile, self.tmux_rc, self.state = author, login, profile, tmux_rc, state
         self.draft, self.alive = draft, alive
@@ -46,7 +46,7 @@ class FakeMachine:
         elif Path(argv[0]).name == "mien" and argv[1] == "which":
             rc, out = (0, f"{self.profile}\n") if self.profile else (1, "")
         elif "gh" in argv and "user" in argv:
-            out = f"{self.login}\n"
+            rc, out, err = (0, f"{self.login}\n", "") if self.login is not None else (1, "", "HTTP 401")
         elif "gh" in argv and any(a.startswith("repos/o/r/pulls/") for a in argv):
             out = json.dumps({"author": self.author, "state": self.state, "draft": self.draft})
         return mock.Mock(returncode=rc, stdout=out, stderr=err)
@@ -67,9 +67,10 @@ class HandoffTest(unittest.TestCase):
         self.saved: dict = {}
         self.exits = Path(tempfile.mkdtemp())
 
-    def run_handoff(self, node: dict, machine: FakeMachine, cache: Path | None = None, call=None, which=None):
+    def run_handoff(self, node: dict, machine: FakeMachine, cache: Path | None = None, call=None, which=None,
+                    clone: str | None = ""):
         with mock.patch("subprocess.run", machine), \
-                mock.patch.object(reflex, "find_clone", return_value=self.clone), \
+                mock.patch.object(reflex, "find_clone", return_value=self.clone if clone == "" else clone), \
                 mock.patch.object(reflex, "save_reflex", lambda url, rec: self.saved.update({url: rec})), \
                 mock.patch.object(reflex, "PLUGIN_CACHE", cache or self.cache, create=True), \
                 mock.patch.object(reflex, "EXIT_DIR", self.exits, create=True), \
@@ -193,6 +194,15 @@ class HandoffTest(unittest.TestCase):
             status, _ = self.run_handoff(pr_node("sent"), machine)
             self.assertEqual(status, 409)
             self.assertEqual((machine.launches(), self.saved), ([], {}))
+
+    def test_no_clone_or_unreadable_account_starts_nothing(self):
+        machine = FakeMachine(author="me")
+        status, _ = self.run_handoff(pr_node("sent"), machine, clone=None)
+        self.assertEqual((status, machine.launches(), self.saved), (404, [], {}))
+        machine = FakeMachine(author="me", login=None)  # gh refuses: signed out, or the token expired
+        status, message = self.run_handoff(pr_node("sent"), machine)
+        self.assertEqual((status, machine.launches(), self.saved), (502, [], {}))
+        self.assertIn("HTTP 401", message)
 
     def test_missing_cli_starts_nothing(self):
         machine = FakeMachine(author="me")

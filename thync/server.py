@@ -213,11 +213,11 @@ class Handler(SimpleHTTPRequestHandler):
         if REFLEX_HOST and not self.forwarded():
             # Sent on once; if the remote cannot be reached nothing runs here, under this machine's accounts.
             status, reply = remote.by_name(REFLEX_HOST).post("/reflex", {"node": target, "check": check, "plan": shown})
-            message = str(reply.get("message", "")) or f"{REFLEX_HOST} 응답 {status}"
             if status < 400 and isinstance(reply.get("plan"), dict):
                 self.send_json(status, {"plan": {**reply["plan"], "host": REFLEX_HOST}})
                 return
-            self.send_json(status, {"message": f"{REFLEX_HOST}: {message}" if status < 400 else message})
+            # Named, so an attach command in the answer is read as one for that machine.
+            self.send_json(status, {"message": f"{REFLEX_HOST}: {reply.get('message') or f'응답 {status}'}"})
             return
         if not HANDOFF or REFLEX_HOST:
             self.send_json(503, {"message": "이 머신에는 claude CLI 나 세션 기록이 없어 PR 을 맡길 수 없어요"})
