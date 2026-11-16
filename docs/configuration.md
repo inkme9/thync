@@ -27,7 +27,7 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 
 | 키 | 뜻 | 기본값 |
 | --- | --- | --- |
-| `sources` | 읽을 출처. `claude_code`(Claude Code 세션 로그), `codex`(Codex CLI 세션 로그), `github`(내 커밋, 리뷰 요청, 내 PR), `jira`(나에게 배정된 티켓), `notion`(최근에 고친 페이지) | 다섯 가지 모두 |
+| `sources` | 읽을 출처. `claude_code`(Claude Code 세션 로그), `codex`(Codex CLI·Desktop 세션 로그), `github`(내 커밋, 리뷰 요청, 내 PR), `jira`(나에게 배정된 티켓), `notion`(최근에 고친 페이지) | 다섯 가지 모두 |
 | `company_roots` | 이 폴더 아래에서 시작한 세션은 회사 프로필이 됩니다. PR을 맡길 때 로컬 저장소를 찾는 위치이기도 합니다 | `[]` (세션은 모두 개인) |
 | `jira_browse_url` | Jira 티켓 링크 앞부분 (예: `https://example.atlassian.net/browse/`). 티켓 정보를 받아 올 주소도 여기서 정합니다 | 없음 (링크 없음) |
 | `jira_email` | Jira Cloud 계정 이메일. API 토큰과 함께 있으면 티켓 요약·상태·상위 이슈를 자동으로 받아 옵니다 | 없음 (`jira.json`을 손으로 채움) |
