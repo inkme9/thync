@@ -141,6 +141,12 @@ class CodexPrompts(unittest.TestCase):
         s = self.read([meta(), parent, user(ts(50), "x")])  # a later meta does not replace the first one either
         self.assertEqual((s.id, s.cwd), ("c1", "/w/repo"))
 
+    def test_a_malformed_first_meta_does_not_adopt_the_copied_parent(self):
+        parent = {"type": "session_meta", "timestamp": ts(90), "payload": {"id": "parent", "source": "vscode"}}
+        broken = {"type": "session_meta", "timestamp": ts(90), "payload": ["not", "a", "dict"]}
+        s = self.read([broken, parent, user(ts(50), "copied parent prompt")])
+        self.assertEqual((s.subagent, s.prompts), (True, []))
+
     def test_thread_source_subagent_with_a_string_source(self):  # criterion 7
         path = self.write([{"type": "session_meta", "timestamp": ts(90), "payload": {
             "id": "c", "source": "vscode", "thread_source": "subagent"}}, user(ts(50), "do x")])
