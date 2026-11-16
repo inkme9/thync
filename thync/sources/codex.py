@@ -11,12 +11,39 @@ from .claude_code import ASK_TOOLS, Session
 PATCH_FILE = re.compile(r"^\*\*\* (?:Add|Update) File: (.+)$", re.M)
 
 
+MY_REQUEST = re.compile(r"^## My request[^\n]*\n", re.M)
+
+
+def request(text: str, context: bool = False) -> str:
+    """What the user typed in one block: after the last '## My request' heading, which Codex puts after the context
+    it adds (IDE tabs, mentioned files, browser page). Without that heading, a block starting with '<' or '#' is
+    context Codex added (<environment_context>, # AGENTS.md instructions, ...) when context=True."""
+    parts = MY_REQUEST.split(text)
+    if context and len(parts) == 1 and text.lstrip().startswith(("<", "#")):
+        return ""
+    return " ".join(parts[-1].split())
+
+
 class CodexSession(Session):
     source = "codex"
 
     def __init__(self, path: Path):
         super().__init__(path)
         self.subagent = False
+        self.last_prompt = ("", "")  # (line type, text) of the last prompt, to count one input logged both ways once
+
+    def prompt(self, ts: str, kind: str, text: str) -> None:
+        if not text:
+            return
+        # Older Codex wrote each input twice, as a response_item and as an event_msg. A second copy follows its twin
+        # from the other line type; the same text from the same line type is a new input ('ok' typed twice).
+        twin = self.last_prompt[0] not in ("", kind) and self.last_prompt[1] == text
+        self.last_prompt = ("", "") if twin else (kind, text)
+        if twin:
+            return
+        self.prompts.append((ts, text))
+        self.events.append((ts, "prompt", text[:120]))
+        self.last_at = max(self.last_at, ts)
 
     def _line(self, line: str) -> None:
         d = json.loads(line)
@@ -31,13 +58,10 @@ class CodexSession(Session):
             return
         t = p.get("type")
         if kind == "event_msg" and t == "user_message":
-            # The IDE extension prepends its context; the prompt follows the last '## My request' heading.
-            text = re.split(r"^## My request[^\n]*\n", p.get("message") or "", flags=re.M)[-1]
-            text = " ".join(text.split())
-            if text:
-                self.prompts.append((ts, text))
-                self.events.append((ts, "prompt", text[:120]))
-                self.last_at = max(self.last_at, ts)
+            self.prompt(ts, kind, request(p.get("message") or ""))
+        elif kind == "response_item" and t == "message" and p.get("role") == "user":
+            texts = (request(c.get("text") or "", context=True) for c in p.get("content") or [])
+            self.prompt(ts, kind, " ".join(filter(None, texts)))
         elif kind == "event_msg" and t == "agent_message":
             self.last_at = max(self.last_at, ts)
         elif kind == "event_msg" and t in ("task_started", "task_complete", "turn_aborted"):
