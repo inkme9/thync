@@ -186,13 +186,14 @@ class Remote:
                 backoff = min(backoff * 2, 30.0)
 
     def post(self, path: str, body: dict, timeout: float = 15) -> tuple[int, dict]:
-        """Forward a write to this server's thync. Returns (HTTP status, JSON body or {})."""
+        """Forward a write to this server's thync. Returns (HTTP status, JSON body or {}). An answer made here, not by
+        that thync, says "hub"; one where the request may or may not have arrived also says "unreached"."""
         if not self.ok:
-            return 503, {"message": f"{self.name} 에 연결되어 있지 않아요 ({self.error})"}
+            return 503, {"message": f"{self.name} 에 연결되어 있지 않아요 ({self.error})", "hub": True}
         try:
             status, raw, _ = self.request(path, body, timeout=timeout)
-        except RemoteError as e:
-            return 502, {"message": f"{self.name}: {e}"}
+        except RemoteError as e:  # the far end may or may not have acted on it
+            return 502, {"message": f"{self.name}: {e}", "hub": True, "unreached": True}
         try:
             return status, json.loads(raw) if raw else {}
         except ValueError:

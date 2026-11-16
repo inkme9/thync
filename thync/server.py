@@ -216,13 +216,16 @@ class Handler(SimpleHTTPRequestHandler):
             # The far end runs several git, mien and gh calls; a short timeout would report a start that still happens.
             status, reply = remote.by_name(REFLEX_HOST).post("/reflex", {"node": target, "check": check, "plan": shown},
                                                              timeout=REFLEX_FORWARD_SEC)
-            if status == 502 and not check:
-                reply = {"message": f"{reply.get('message', '')} · 시작됐는지 알 수 없어요. 맡긴 일 카드를 확인해 주세요"}
             if status < 400 and isinstance(reply.get("plan"), dict):
                 self.send_json(status, {"plan": {**reply["plan"], "host": REFLEX_HOST}})
                 return
-            # Named, so an attach command in the answer is read as one for that machine.
-            self.send_json(status, {"message": f"{REFLEX_HOST}: {reply.get('message') or f'응답 {status}'}"})
+            if reply.get("hub"):
+                message = str(reply["message"])  # made by Remote.post, which already names the machine
+            else:  # the far end's answer, named so an attach command in it is read as one for that machine
+                message = f"{REFLEX_HOST}: {reply.get('message') or f'응답 {status}'}"
+            if reply.get("unreached") and not check:
+                message += " · 시작됐는지 알 수 없어요. 맡긴 일 카드를 확인해 주세요"
+            self.send_json(status, {"message": message})
             return
         if not HANDOFF or REFLEX_HOST:
             self.send_json(503, {"message": "이 머신에는 claude CLI 나 세션 기록이 없어 PR 을 맡길 수 없어요"})

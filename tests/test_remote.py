@@ -206,8 +206,8 @@ class HubTest(unittest.TestCase):
                                          server.REFLEX_FORWARD_SEC)])
                 self.r.ok, self.r.error = False, "연결 끊김"
                 with mock.patch.object(self.r, "post", remote.Remote.post.__get__(self.r)):
-                    status, _ = self.call(hub, {"id": node["id"], "check": True})
-                self.assertEqual(status, 503)
+                    status, reply = self.call(hub, {"id": node["id"], "check": True})
+                self.assertEqual((status, reply["message"]), (503, "devbox1 에 연결되어 있지 않아요 (연결 끊김)"))
             self.assertEqual((start.call_count, plan.call_count), (0, 0))  # never run on the hub
         finally:
             hub.close()
@@ -229,8 +229,13 @@ class HubTest(unittest.TestCase):
                     mock.patch.object(server, "start_reflex") as start:
                 status, reply = self.call(hub, {"id": node["id"], "plan": {}})
             self.assertEqual((status, start.call_count), (502, 0))
-            self.assertIn("터널 끊김", reply["message"])
-            self.assertIn("시작됐는지 알 수 없어요", reply["message"])  # the far end may still start it
+            self.assertEqual(reply["message"], "devbox1: 터널 끊김 · 시작됐는지 알 수 없어요. 맡긴 일 카드를 확인해 주세요")
+            with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
+                    mock.patch.object(server, "build_graph", return_value={"nodes": [node]}), \
+                    mock.patch.object(self.r, "post", return_value=(502, {"message": "GitHub 계정이나 PR 을 확인하지 못했어요"})):
+                status, reply = self.call(hub, {"id": node["id"], "plan": {}})
+            # The far end answered: nothing started there, so no "may have started", and it is named once.
+            self.assertEqual((status, reply["message"]), (502, "devbox1: GitHub 계정이나 PR 을 확인하지 못했어요"))
         finally:
             hub.close()
 

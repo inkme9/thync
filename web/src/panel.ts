@@ -30,7 +30,7 @@ export function infoButton(id: string): HTMLButtonElement {
 export const NODE_DRAG = "application/x-thync-node";
 let dragging = false; // the 2 s refresh would replace the row being dragged
 
-function item(n: ApiNode, main: string, sub: string, role: string, handoff = false): HTMLLIElement {
+function item(n: ApiNode, main: string, sub: string, role: string, handoff = false, key = main): HTMLLIElement {
   const li = Object.assign(document.createElement("li"), { className: role });
   li.append(Object.assign(document.createElement("div"), { className: "main", textContent: main }),
     Object.assign(document.createElement("div"), { className: "sub", textContent: sub }), infoButton(n.id));
@@ -45,7 +45,7 @@ function item(n: ApiNode, main: string, sub: string, role: string, handoff = fal
     li.ondragstart = (e) => { dragging = true; e.dataTransfer!.setData(NODE_DRAG, n.id); e.dataTransfer!.effectAllowed = "link"; };
     li.ondragend = () => { dragging = false; };
   }
-  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${main}|${b.textContent}`; });
+  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.textContent}`; });
   return li;
 }
 
@@ -98,7 +98,8 @@ export function renderPanel(): void {
   list(receivedList, received.map((r) => {
     const n = shownById.get(r.pr)!;
     const li = item(n, `${r.author} · ${REVIEW_STATE[r.state] ?? r.state} — ${n.name}`,
-      `${r.text ? cut(r.text.replace(/[#*`>_]+/g, "").replace(/\s+/g, " ").trim(), 90) : "줄 코멘트"} · ${ago(Date.parse(r.at) / 1000)}`, "received", true);
+      `${r.text ? cut(r.text.replace(/[#*`>_]+/g, "").replace(/\s+/g, " ").trim(), 90) : "줄 코멘트"} · ${ago(Date.parse(r.at) / 1000)}`, "received", true,
+      `${r.author}|${r.at}`);
     if (r.state === "CHANGES_REQUESTED") li.classList.add("changes");
     return li;
   }), "받은 리뷰 없음");

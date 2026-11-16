@@ -24,9 +24,9 @@ WORKFLOW = {"review": "concord:review-until-approve", "sent": "concord:pr-to-mer
 PLUGIN_CACHE = HOME / ".claude" / "plugins" / "cache"
 EXIT_DIR = STATE_DIR / "handoff"
 PR_URL = re.compile(r"https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)")
-# mien pipes a child's output instead of giving it the terminal when these say an agent harness runs it; the session
-# must stay interactive even when thync itself was started from a Claude Code shell.
-HARNESS_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
+# mien pipes a child's output instead of giving it the terminal when one of these says an agent harness runs it (mien's
+# CAPTURE_MARKER_VARS); the session must stay interactive even when the tmux server was started from an agent's shell.
+HARNESS_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CODEX_THREAD_ID", "COPILOT_AGENT", "MIEN_CAPTURED")
 # The session edits, commits and pushes (my PR) or runs Concord's scripts (someone else's), so it keeps auto mode;
 # it still may not read secrets.
 PERMISSIONS = ["--permission-mode", "auto", "--disallowedTools", "Read(~/.thync/**)", "Read(~/.ssh/**)",

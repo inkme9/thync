@@ -58,7 +58,8 @@ class FakeMachine:
         return [c[-1] for c in self.calls if c[:2] == ["tmux", "new-session"] and c[-3:-1] == ["sh", "-c"]]
 
 
-ENV = ["env", "-u", "CLAUDECODE", "-u", "CLAUDE_CODE_ENTRYPOINT"]
+ENV = ["env", "-u", "CLAUDECODE", "-u", "CLAUDE_CODE_ENTRYPOINT", "-u", "CODEX_THREAD_ID", "-u", "COPILOT_AGENT",
+       "-u", "MIEN_CAPTURED"]
 
 
 def argv_of(script: str) -> list[str]:

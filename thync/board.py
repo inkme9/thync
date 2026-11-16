@@ -92,8 +92,8 @@ def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list
         if "tmux" not in r:
             continue  # a record of the one-shot reviewer thync no longer has
         pr = nodes.get(f"pr:{url}")
-        # The session of this run, not an earlier hand-off of the same PR (a minute of slack for the first prompt).
-        session = max((n for n in handed.get(url, []) if n["detail"].get("first_at", 0) >= r["started"] - 60),
+        # The session of this run, not an earlier hand-off of the same PR; both times come from the machine running it.
+        session = max((n for n in handed.get(url, []) if n["detail"].get("first_at", 0) >= r["started"]),
                       key=lambda n: n["detail"]["first_at"], default=None)
         attach = f"tmux attach -t {r['tmux']}"
         run = r if "host" in r else run_state(r)
