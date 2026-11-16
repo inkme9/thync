@@ -12,8 +12,6 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
 
-const HUB: &str = "http://127.0.0.1:8765";
-
 fn state_dir() -> PathBuf {
     std::env::var("THYNC_HOME")
         .map(PathBuf::from)
@@ -27,6 +25,16 @@ fn token() -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
+/// The hub's address: 127.0.0.1 on the `port` the hub reads from config.json, 8765 when unset.
+fn hub() -> String {
+    let port = std::fs::read_to_string(state_dir().join("config.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|c| c["port"].as_u64())
+        .unwrap_or(8765);
+    format!("http://127.0.0.1:{port}")
+}
+
 /// The thync checkout this app was built from; used to start the hub when there is no ~/.thync/run.sh.
 fn repo_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -38,7 +46,7 @@ fn status() -> Result<serde_json::Value, String> {
     let token = token().ok_or("thync 토큰이 없어요")?;
     let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(3)).build();
     agent
-        .get(&format!("{HUB}/status.json"))
+        .get(&format!("{}/status.json", hub()))
         .set("X-Thync-Token", &token)
         .call()
         .map_err(|e| e.to_string())?
@@ -52,7 +60,7 @@ fn show_main(app: &AppHandle) -> tauri::Result<()> {
         w.unminimize()?;
         return w.set_focus();
     }
-    let url: tauri::Url = format!("{HUB}/#t={}", token().unwrap_or_default()).parse().expect("hub url");
+    let url: tauri::Url = format!("{}/#t={}", hub(), token().unwrap_or_default()).parse().expect("hub url");
     let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
         .title("thync")
         .inner_size(1400.0, 900.0)
