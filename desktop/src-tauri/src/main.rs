@@ -73,6 +73,21 @@ fn status() -> Result<serde_json::Value, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Hands an obsidian:// link (a note, the Kanban board) to Obsidian, which the webview cannot open by itself.
+/// Returns whether it was one.
+fn open_in_obsidian(url: &tauri::Url) -> bool {
+    if url.scheme() != "obsidian" {
+        return false;
+    }
+    let _ = Command::new("/usr/bin/open")
+        .arg(url.as_str())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    true
+}
+
 fn show_main(app: &AppHandle) -> Result<(), String> {
     if let Some(w) = app.get_webview_window("main") {
         return w.show().and_then(|_| w.unminimize()).and_then(|_| w.set_focus()).map_err(|e| e.to_string());
@@ -81,6 +96,15 @@ fn show_main(app: &AppHandle) -> Result<(), String> {
     let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
         .title("thync")
         .inner_size(1400.0, 900.0)
+        // A board card sets location.href; a note link in the detail panel calls window.open.
+        .on_navigation(|url| !open_in_obsidian(url))
+        .on_new_window(|url, _| {
+            if open_in_obsidian(&url) {
+                tauri::webview::NewWindowResponse::Deny
+            } else {
+                tauri::webview::NewWindowResponse::Allow
+            }
+        })
         .build()
         .map_err(|e| e.to_string())?;
     w.set_focus().map_err(|e| e.to_string())
