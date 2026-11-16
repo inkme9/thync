@@ -2,6 +2,7 @@ import http.client
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
+from unittest import mock
 
 from thync import server
 
@@ -27,6 +28,40 @@ class HostCheck(unittest.TestCase):
     def test_other_names_are_refused(self):
         for host in ("evil.example", "ts.net", "evilts.net", "mini.ts.net.evil.example", ""):
             self.assertEqual(self.status(host), 403, host)
+
+
+class TailscaleUsers(unittest.TestCase):
+    def setUp(self):
+        for p in (mock.patch.object(server, "TOKEN", "t"), mock.patch.object(server, "TAILSCALE_USERS", {"me@example.com"}),
+                  mock.patch.object(server, "build_graph", lambda days: {"days": days})):
+            p.start()
+            self.addCleanup(p.stop)
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.httpd.shutdown)
+
+    def status(self, headers: dict) -> int:
+        conn = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=5)
+        conn.request("GET", "/graph.json", headers={"Host": "mini.tail1234.ts.net", **headers})
+        status = conn.getresponse().status
+        conn.close()
+        return status
+
+    def test_a_listed_login_needs_no_token(self):
+        self.assertEqual(self.status({"Tailscale-User-Login": "me@example.com"}), 200)
+        self.assertEqual(self.status({"Tailscale-User-Login": "Me@Example.com"}), 200)
+
+    def test_others_still_need_the_token(self):
+        self.assertEqual(self.status({"Tailscale-User-Login": "someone@example.com"}), 401)
+        self.assertEqual(self.status({"Tailscale-User-Login": ""}), 401)
+        self.assertEqual(self.status({}), 401)
+        self.assertEqual(self.status({"X-Thync-Token": "t"}), 200)
+
+    def test_no_login_passes_when_none_is_listed(self):
+        with mock.patch.object(server, "TAILSCALE_USERS", set()):
+            self.assertEqual(self.status({"Tailscale-User-Login": "me@example.com"}), 401)
+            self.assertEqual(self.status({"Tailscale-User-Login": ""}), 401)
 
 
 if __name__ == "__main__":

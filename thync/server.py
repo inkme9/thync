@@ -5,7 +5,8 @@ answers to a remote session's question and, with `reflex_host`, PR hand-offs are
 
 Binds to 127.0.0.1 only. Data and writes also require the X-Thync-Token header, because on a shared
 machine other local users can reach 127.0.0.1 too, and with `tailscale serve` so can every tailnet device the
-tailnet's access rules let in. The static page holds no data and needs no token.
+tailnet's access rules let in. A login listed in `tailscale_users` needs no token: `tailscale serve` names it in
+Tailscale-User-Login. The static page holds no data and needs no token.
 """
 import gzip
 import hmac
@@ -23,7 +24,7 @@ from urllib.parse import parse_qs, urlparse, urlsplit
 
 from . import ask
 from .config import (DEFAULT_DAYS, HANDOFF, HOST, MAX_DAYS, PORT, PROFILE_PERSONAL, PROFILE_WORK, REFLEX_HOST, REMOTES,
-                     SESSIONS, SOURCES, STATE_DIR, WEB_DIR)
+                     SESSIONS, SOURCES, STATE_DIR, TAILSCALE_USERS, WEB_DIR)
 from .export import snapshot
 from .graph import build_graph
 from .reflex import start_reflex
@@ -62,6 +63,8 @@ class Handler(SimpleHTTPRequestHandler):
     def authorized(self) -> bool:
         sent = self.headers.get("X-Thync-Token", "").encode()
         if TOKEN and hmac.compare_digest(sent, TOKEN.encode()):
+            return True
+        if self.headers.get("Tailscale-User-Login", "").strip().casefold() in TAILSCALE_USERS:  # empty set: never
             return True
         self.send_error(401, "token required")
         return False
