@@ -8,6 +8,7 @@ machine other local users can reach 127.0.0.1 too, and with `tailscale serve` so
 tailnet's access rules let in. A login listed in `tailscale_users` needs no token: `tailscale serve` names it in
 Tailscale-User-Login. The static page holds no data and needs no token.
 """
+import email.header
 import gzip
 import hmac
 import json
@@ -64,10 +65,18 @@ class Handler(SimpleHTTPRequestHandler):
         sent = self.headers.get("X-Thync-Token", "").encode()
         if TOKEN and hmac.compare_digest(sent, TOKEN.encode()):
             return True
-        if self.headers.get("Tailscale-User-Login", "").strip().casefold() in TAILSCALE_USERS:  # empty set: never
+        if TAILSCALE_USERS and self.tailscale_login() in TAILSCALE_USERS:
             return True
         self.send_error(401, "token required")
         return False
+
+    def tailscale_login(self) -> str:
+        """Tailscale-User-Login as `tailscale serve` sends it: RFC 2047 encoded when it is not ASCII."""
+        raw = self.headers.get("Tailscale-User-Login", "")
+        try:
+            return str(email.header.make_header(email.header.decode_header(raw))).strip().casefold()
+        except (ValueError, LookupError, UnicodeDecodeError):
+            return ""
 
     def forwarded(self) -> bool:
         """Sent on by a hub thync (sources/remote.py): handle it here, never forward it again."""

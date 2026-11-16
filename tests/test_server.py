@@ -51,10 +51,12 @@ class TailscaleUsers(unittest.TestCase):
     def test_a_listed_login_needs_no_token(self):
         self.assertEqual(self.status({"Tailscale-User-Login": "me@example.com"}), 200)
         self.assertEqual(self.status({"Tailscale-User-Login": "Me@Example.com"}), 200)
+        self.assertEqual(self.status({"Tailscale-User-Login": "=?utf-8?q?me=40example.com?="}), 200)  # RFC 2047
 
     def test_others_still_need_the_token(self):
         self.assertEqual(self.status({"Tailscale-User-Login": "someone@example.com"}), 401)
         self.assertEqual(self.status({"Tailscale-User-Login": ""}), 401)
+        self.assertEqual(self.status({"Tailscale-User-Login": "=?bogus?q?me=40example.com?="}), 401)
         self.assertEqual(self.status({}), 401)
         self.assertEqual(self.status({"X-Thync-Token": "t"}), 200)
 
