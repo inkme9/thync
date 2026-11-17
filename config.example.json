@@ -9,6 +9,5 @@
   "obsidian_board": "",
   "cards_dir": "~/.thync/cards",
   "port": 8765,
-  "tailscale_users": [],
-  "reflex_skills": {"sent": "pr-review-watch"}
+  "tailscale_users": []
 }

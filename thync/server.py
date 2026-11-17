@@ -29,13 +29,17 @@ from .config import (DEFAULT_DAYS, HANDOFF, HOST, MAX_DAYS, PORT, PROFILE_PERSON
                      SESSIONS, SOURCES, STATE_DIR, TAILSCALE_USERS, WEB_DIR)
 from .export import snapshot
 from .graph import build_graph
-from .reflex import start_reflex
+from .reflex import plan_reflex, start_reflex
 from .sources import github, jira, notion, obsidian, remote
 from .sources.claude_code import load_sessions, questions_of
 from .store import BOARD_COLUMNS, load_token, save_card, save_name
 from .util import BOARD_CARD
 
 TOKEN = ""
+REFLEX_FORWARD_SEC = 300  # longer than the far end's own checks can take
+# Where a hub sends hand-offs. A path of its own: a thync from before the check step would take a check sent to
+# /reflex as a start and run its old workflow, while an unknown path only answers 404.
+FORWARDED_REFLEX = "/reflex/forwarded"
 TAILSCALE_NAME = ""  # this machine's MagicDNS name, set at start when `tailscale_users` is not empty
 
 
@@ -174,7 +178,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         if not self.local_host() or not self.authorized():
             return
-        handler = {"/reflex": self.post_reflex, "/board": self.post_board, "/rename": self.post_rename,
+        handler = {"/reflex": self.post_reflex, FORWARDED_REFLEX: self.post_reflex, "/board": self.post_board, "/rename": self.post_rename,
                    "/answer": self.post_answer, "/ask": self.post_ask}.get(
             urlparse(self.path).path)
         if not handler:
@@ -223,8 +227,11 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(502, {"message": "GitHub 에서 리뷰를 가져오지 못했어요"})
 
     def post_reflex(self):
+        """{id|node, check: true} -> the plan to confirm, starting nothing; {id|node, plan} -> start it (reflex.py)."""
         req = self.read_body(16384)
-        approve = req.get("approve") is True
+        check, shown = req.get("check") is True, req.get("plan")
+        if not check and not isinstance(shown, dict):
+            raise ValueError("neither check nor plan")
         if isinstance(req.get("node"), dict):
             # A hub forwarding a hand-off: it sends the PR node, which this machine's graph may not have.
             target = req["node"]
@@ -237,14 +244,38 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json(404, {"message": "노드를 찾지 못했어요"})
             return
         if REFLEX_HOST and not self.forwarded():
-            status, reply = remote.by_name(REFLEX_HOST).post("/reflex", {"node": target, "approve": approve})
-            message = str(reply.get("message", "")) or f"{REFLEX_HOST} 응답 {status}"
-            self.send_json(status, {"message": f"{REFLEX_HOST}: {message}" if status < 400 else message})
+            # Sent on once; if the remote cannot be reached nothing runs here, under this machine's accounts.
+            # The far end runs several git, mien and gh calls; a short timeout would report a start that still happens.
+            # With the profile that lists it here, which the far end must run as.
+            listed = github.account_for(str(target["detail"].get("url", "")))
+            status, reply = remote.by_name(REFLEX_HOST).post(
+                FORWARDED_REFLEX, {"node": target, "check": check, "plan": shown, "listed": listed},
+                timeout=REFLEX_FORWARD_SEC)
+            if status < 400 and isinstance(reply.get("plan"), dict):
+                self.send_json(status, {"plan": {**reply["plan"], "host": REFLEX_HOST}})
+                return
+            if status == 404 and not reply:  # no such path: a thync from before the check step
+                message = f"{REFLEX_HOST} 의 thync 가 오래된 버전이에요. 그 서버에서 git pull 후 다시 시작해 주세요"
+            elif reply.get("hub"):
+                message = str(reply["message"])  # made by Remote.post, which already names the machine
+            else:  # the far end's answer, named so an attach command in it is read as one for that machine
+                message = f"{REFLEX_HOST}: {reply.get('message') or f'응답 {status}'}"
+            if reply.get("unreached") and not check:
+                message += " · 시작됐는지 알 수 없어요. 맡긴 일 카드를 확인해 주세요"
+            self.send_json(status, {"message": message})
             return
         if not HANDOFF or REFLEX_HOST:
             self.send_json(503, {"message": "이 머신에는 claude CLI 나 세션 기록이 없어 PR 을 맡길 수 없어요"})
             return
-        status, message = start_reflex(target, approve)
+        # The profile whose account lists the PR: the hub's answer when it forwarded this, else this machine's lists.
+        listed = req.get("listed") if self.forwarded() else github.account_for(str(target["detail"].get("url", "")))
+        if listed is not None and not isinstance(listed, str):
+            raise ValueError("bad listed")
+        if check:
+            status, plan = plan_reflex(target, listed)
+            self.send_json(status, {"plan": plan} if status == 200 else plan)
+            return
+        status, message = start_reflex(target, shown, listed)
         self.send_json(status, {"message": message})
 
     def post_ask(self):

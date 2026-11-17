@@ -11,7 +11,7 @@ from unittest import mock
 
 os.environ["THYNC_HOME"] = tempfile.mkdtemp()  # even when the shell sets it: tests delete card files
 
-from thync import graph, review, store, util  # noqa: E402
+from thync import graph, store, util  # noqa: E402
 from thync.sources import github, jira  # noqa: E402
 
 
@@ -44,35 +44,6 @@ class FixesTest(unittest.TestCase):
         with mock.patch.object(github, "_run", side_effect=[fail, "New/Name\n"]):
             self.assertEqual(github.canonical_slug("Old/Repo-x"), "old/repo-x")
             self.assertEqual(github.canonical_slug("Old/Repo-x"), "new/name")
-
-    def test_same_commit_is_not_reviewed_twice(self):
-        calls = []
-
-        def gh(account, *args, stdin=None, timeout=20):
-            calls.append(args[:2])
-            return json.dumps({"title": "t", "body": "", "author": "a", "base": "main", "head": "f", "sha": "abc"})
-
-        saved = {}
-        with mock.patch.object(review, "gh", gh), mock.patch.object(review, "save_reflex", lambda u, r: saved.update(r)):
-            review.review("https://github.com/o/r/pull/1", {"approve": False, "reviewed": "abc:False"})
-        self.assertEqual((saved["status"], saved["reviewed"]), ("same", "abc:False"))  # kept for the next drop
-        self.assertEqual(calls, [("api", "repos/o/r/pulls/1")])  # no diff fetched, nothing posted
-
-    def test_a_pr_no_account_lists_is_not_reviewed(self):
-        saved = {}
-        with mock.patch.object(review.github, "account_for", return_value=None), \
-                mock.patch.object(review, "gh") as gh, mock.patch.object(review, "save_reflex", lambda u, r: saved.update(r)):
-            review.review("https://github.com/o/r/pull/1", {"approve": True})
-        gh.assert_not_called()
-        self.assertEqual(saved["status"], "failed")
-        self.assertIn("계정", saved["error"])
-
-    def test_reviewed_mark_survives_restarts_of_the_record(self):
-        with mock.patch.object(review, "threading") as th, \
-                mock.patch.object(review, "load_reflexes", return_value={"u": {"status": "failed", "reviewed": "abc:False"}}), \
-                mock.patch.object(review, "save_reflex"):
-            review.start_review("u", True)
-        self.assertEqual(th.Thread.call_args.kwargs["args"][1]["reviewed"], "abc:False")
 
     def test_write_text_keeps_the_existing_mode(self):
         with tempfile.TemporaryDirectory() as d:

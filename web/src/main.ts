@@ -5,7 +5,7 @@ import { renderBoard } from "./board.ts";
 import { isModalOpen, openDetail } from "./detail.ts";
 import { toGraph } from "./layout.ts";
 import { reactToChanges, renderLive, resetLive } from "./live.ts";
-import { renderPanel, setStatus } from "./panel.ts";
+import { NODE_DRAG, renderPanel, setStatus } from "./panel.ts";
 import { openReflex } from "./reflex.ts";
 import { renderer } from "./renderer.ts";
 import { notableUnits, onBrain, recall, remember, shown, state } from "./state.ts";
@@ -84,6 +84,19 @@ let pointerUpAt = -Infinity;
 canvas.addEventListener("pointerup", () => { pointerUpAt = performance.now(); });
 state.graph = toGraph();
 renderer.onSpineDrop = openReflex;
+// A review-list row dragged from the side panel and dropped anywhere on the brain hands its PR off. Unlike a node
+// dragged inside the brain, which moves when it misses the spine, a row has no other meaning there.
+// The whole #brain takes it, so the status line and buttons drawn over the canvas do too.
+const brainBox = document.querySelector<HTMLDivElement>("#brain")!;
+brainBox.addEventListener("dragover", (e) => {
+  if (e.dataTransfer?.types.includes(NODE_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = "link"; }
+});
+brainBox.addEventListener("drop", (e) => {
+  const id = e.dataTransfer?.getData(NODE_DRAG);
+  if (!id) return;
+  e.preventDefault();
+  openReflex(id);
+});
 renderer.start(canvas, () => state.graph, {
   idleAutoRotate: recall("autoRotate") !== "0",
   showLobeLabels: true,

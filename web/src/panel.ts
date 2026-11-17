@@ -1,7 +1,9 @@
 // The side panel: what I focus on, background work, review requests, my PRs under review.
-// Clicking an item highlights it on the brain; only its 상세 button opens the detail modal.
+// Clicking an item highlights it on the brain; only its 상세 button opens the detail modal. A row of the three
+// review lists is handed to Claude with its 맡기기 button or by dragging it onto the brain (reflex.ts).
 import { openDetail } from "./detail.ts";
 import { focus } from "./main.ts";
+import { openReflex } from "./reflex.ts";
 import { isSource, shown, state } from "./state.ts";
 import { REVIEW_STATE, ago, cut } from "./style.ts";
 import type { ApiNode } from "./types.ts";
@@ -25,21 +27,46 @@ export function infoButton(id: string): HTMLButtonElement {
   return btn;
 }
 
-function item(n: ApiNode, main: string, sub: string, role: string): HTMLLIElement {
+/** The drag type a review-list row carries, so the board's own card drops ignore it. */
+export const NODE_DRAG = "application/x-thync-node";
+let dragging = false; // the 2 s refresh would replace the row being dragged
+const brain = document.querySelector<HTMLDivElement>("#brain")!;
+
+function item(n: ApiNode, main: string, sub: string, role: string, handoff = false, key = main): HTMLLIElement {
   const li = Object.assign(document.createElement("li"), { className: role });
   li.append(Object.assign(document.createElement("div"), { className: "main", textContent: main }),
     Object.assign(document.createElement("div"), { className: "sub", textContent: sub }), infoButton(n.id));
   li.onclick = () => focus(n.id);
+  if (handoff && state.data.handoff) {
+    const btn = Object.assign(document.createElement("button"), { className: "info hand", textContent: "맡기기",
+      title: "Claude 에게 맡기기 (확인 창이 열려요)" });
+    btn.onclick = (e) => { e.stopPropagation(); openReflex(n.id); };
+    btn.ondblclick = (e) => e.stopPropagation();
+    li.append(btn);
+    li.draggable = true;
+    li.ondragstart = (e) => {
+      dragging = true;
+      brain.classList.add("drop-target"); // the brain shows where to drop it
+      e.dataTransfer!.setData(NODE_DRAG, n.id);
+      e.dataTransfer!.effectAllowed = "link";
+    };
+    li.ondragend = () => { dragging = false; brain.classList.remove("drop-target"); };
+  }
+  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.textContent}`; });
   return li;
 }
 
 function list(ul: HTMLUListElement, items: HTMLLIElement[], empty: string): void {
+  // Keep keyboard focus on the same button across the 2 s refresh (keys are set in item()).
+  const had = ul.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.key : undefined;
   ul.replaceChildren(...(items.length ? items : [Object.assign(document.createElement("li"), { className: "empty", textContent: empty })]));
+  if (had) [...ul.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.dataset.key === had)?.focus();
 }
 
 const STATE_ORDER: Record<string, number> = { "수정 요청": 0, "승인됨": 1, "코멘트 있음": 2, "리뷰 대기": 3 };
 
 export function renderPanel(): void {
+  if (dragging) return;
   const visible = shown();
   const sources = visible.filter(isSource);
   // A session on another machine names it first.
@@ -62,14 +89,14 @@ export function renderPanel(): void {
   const reviews = visible.filter((n) => n.roles.includes("review"))
     .sort((x, y) => String(y.detail.updated).localeCompare(String(x.detail.updated)));
   list(reviewList, reviews.map((n) => item(n, `${n.name} ${String(n.detail.text)}`,
-    `${String(n.detail.author)} · ${ago(Date.parse(String(n.detail.updated)) / 1000)}`, "review")),
+    `${String(n.detail.author)} · ${ago(Date.parse(String(n.detail.updated)) / 1000)}`, "review", true)),
     "리뷰 요청 없음");
 
   const sent = visible.filter((n) => n.roles.includes("sent"))
     .sort((x, y) => (STATE_ORDER[String(x.detail.review_state)] ?? 9) - (STATE_ORDER[String(y.detail.review_state)] ?? 9)
       || String(y.detail.updated).localeCompare(String(x.detail.updated)));
   list(sentList, sent.map((n) => item(n, `${n.name} ${String(n.detail.text)}`,
-    `${String(n.detail.review_state)}${n.detail.reviewers ? ` · 대기: ${n.detail.reviewers}` : ""} · ${ago(Date.parse(String(n.detail.updated)) / 1000)}`, "sent")),
+    `${String(n.detail.review_state)}${n.detail.reviewers ? ` · 대기: ${n.detail.reviewers}` : ""} · ${ago(Date.parse(String(n.detail.updated)) / 1000)}`, "sent", true)),
     "리뷰를 기다리는 내 PR 없음");
 
   // Reviews others left on my PRs, newest first. Clicking shows the PR; its 상세 button opens the full reviews.
@@ -78,7 +105,8 @@ export function renderPanel(): void {
   list(receivedList, received.map((r) => {
     const n = shownById.get(r.pr)!;
     const li = item(n, `${r.author} · ${REVIEW_STATE[r.state] ?? r.state} — ${n.name}`,
-      `${r.text ? cut(r.text.replace(/[#*`>_]+/g, "").replace(/\s+/g, " ").trim(), 90) : "줄 코멘트"} · ${ago(Date.parse(r.at) / 1000)}`, "received");
+      `${r.text ? cut(r.text.replace(/[#*`>_]+/g, "").replace(/\s+/g, " ").trim(), 90) : "줄 코멘트"} · ${ago(Date.parse(r.at) / 1000)}`, "received", true,
+      `${r.author}|${r.at}`);
     if (r.state === "CHANGES_REQUESTED") li.classList.add("changes");
     return li;
   }), "받은 리뷰 없음");

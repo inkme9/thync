@@ -12,7 +12,7 @@ from . import ask, board, model
 from .config import (ACTIVITY_SEC, BACKGROUND_SEC, DEFAULT_DAYS, FILES_PER_SESSION, FILES_SEC, FOCUS_SEC, HANDOFF,
                      JIRA_DONE, JIRA_TODO, LIVE_FILE_SEC, LIVE_SESSION_SEC, PROFILE_PERSONAL, PROFILE_WORK, PRS_PER_SESSION,
                      RUNNING_STALE_SEC, COMPANY_ROOTS, SESSIONS, SOURCES)
-from .reflex import REFLEX_SKILL
+from .reflex import WORKFLOW
 from .sources import github, notion, obsidian, remote
 from .sources.claude_code import load_sessions, repo_of
 from .sources.jira import BRANCH_KEY, TITLE_KEY, Jira
@@ -81,7 +81,7 @@ def merge_units(units: dict, links: dict[str, set[str]]) -> dict[str, str]:
 def reflex_of(s, reflexes: dict) -> str:
     """The PR url when thync started this session for a handed-off PR (it begins with '/<skill> <pr url>')."""
     first = s.prompts[0][1].split()
-    return (first[1] if s.source == "claude_code" and len(first) > 1 and first[0].lstrip("/") in REFLEX_SKILL.values()
+    return (first[1] if s.source == "claude_code" and len(first) > 1 and first[0].lstrip("/") in WORKFLOW.values()
             and first[1] in reflexes else "")
 
 
@@ -203,7 +203,7 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
                    kind_label="작업 세션", source=s.source, cwd=s.cwd, branch=s.branch, updated=int(last), working=running,
                    focus_prompts=len(recent_prompts), subagents=subs, claude_working=claude_working,
                    turn_ended=not waiting and not s.claude_turn and subs == 0,
-                   last_at=last_prompt_at, act=model.retention(age), reflex=reflex_url,
+                   last_at=last_prompt_at, first_at=epoch(s.prompts[0][0]), act=model.retention(age), reflex=reflex_url,
                    last_prompt=s.prompts[-1][1][:200], repo=repo, unit=ukey, host=host,
                    waiting=waiting and {**waiting, "answerable": answerable})
 

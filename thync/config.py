@@ -31,8 +31,6 @@ COMPANY_ROOTS = [str(Path(p).expanduser()) for p in CONFIG.get("company_roots", 
 JIRA_BROWSE = CONFIG.get("jira_browse_url", "")  # e.g. https://example.atlassian.net/browse/
 JIRA_EMAIL = CONFIG.get("jira_email", "")  # with an API token, turns on fetching ticket summaries
 CARDS_DIR = Path(CONFIG.get("cards_dir", STATE_DIR / "cards")).expanduser()
-# Claude Code skills started when a PR is handed off: my PR -> "sent", someone else's PR -> "review".
-REFLEX_SKILL = {"sent": "pr-review-watch", **CONFIG.get("reflex_skills", {})}
 # Where work comes from: "claude_code" and "codex" (session logs), "github" (reviews, my PRs, my commits), "jira",
 # "notion", "obsidian" (notes edited in the vaults of `obsidian_vaults`).
 SOURCES = set(CONFIG.get("sources", ["claude_code", "codex", "github", "jira", "notion", "obsidian"]))
@@ -50,7 +48,8 @@ if REFLEX_HOST not in {r["name"] for r in REMOTES}:
     REFLEX_HOST = ""
 SESSIONS = bool({"claude_code", "codex"} & SOURCES) or bool(REMOTES)
 NOTION_USER = CONFIG.get("notion_user_id", "")  # only pages last edited by this Notion user; empty = every page
-# Handing PRs off to Claude needs the claude CLI and the session logs it writes.
+# Handing PRs off to Claude needs the claude CLI and the session logs it writes (tmux, gh, the Concord skills and a
+# clone are checked when a PR is handed off, reflex.plan_reflex).
 HANDOFF = bool(REFLEX_HOST) or ("claude_code" in SOURCES and shutil.which("claude") is not None)
 # How long the AskUserQuestion hook holds a question for an answer from thync before the session asks itself.
 ASK_WAIT_SEC = int(CONFIG.get("ask_wait_sec", 300))

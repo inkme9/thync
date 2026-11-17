@@ -5,6 +5,8 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
+import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
@@ -170,11 +172,112 @@ class HubTest(unittest.TestCase):
         self.r.fetch()
         node = {"id": "pr:https://github.com/o/r/pull/3", "roles": ["sent"],
                 "detail": {"url": "https://github.com/o/r/pull/3", "repo": "r"}}
+        shown = {"url": node["detail"]["url"], "workflow": "concord:pr-to-merge", "profile": "p", "login": "me"}
         with mock.patch.object(server, "HANDOFF", True), mock.patch.object(server, "REFLEX_HOST", ""), \
+                mock.patch.object(server, "plan_reflex", return_value=(200, shown)) as plan, \
                 mock.patch.object(server, "start_reflex", return_value=(202, "시작했어요")) as start:
-            status, reply = self.r.post("/reflex", {"node": node, "approve": False})
+            checked = self.r.post(server.FORWARDED_REFLEX, {"node": node, "check": True, "plan": None, "listed": "p"})
+            self.assertEqual(start.call_count, 0)  # a check starts nothing
+            status, reply = self.r.post(server.FORWARDED_REFLEX, {"node": node, "check": False, "plan": shown, "listed": "p"})
+        self.assertEqual(checked, (200, {"plan": shown}))
+        self.assertEqual((plan.call_args.args[0]["detail"]["url"], plan.call_args.args[1]), (node["detail"]["url"], "p"))
         self.assertEqual((status, reply["message"]), (202, "시작했어요"))
-        self.assertEqual(start.call_args.args[0]["detail"]["url"], node["detail"]["url"])
+        self.assertEqual(start.call_args.args, (start.call_args.args[0], shown, "p"))  # the hub's listing profile
+
+    def test_hub_sends_a_handoff_on_once_and_never_runs_it_itself(self):
+        self.r.fetch()
+        node = {"id": "pr:https://github.com/o/r/pull/3", "name": "r #3", "kind": "source", "roles": ["review"],
+                "detail": {"url": "https://github.com/o/r/pull/3", "repo": "r"}}
+        hub = RemoteThync([])
+        try:
+            sent = []
+
+            def post(path, body, timeout=15):
+                sent.append((path, body, timeout))
+                return 202, {"message": "시작했어요"}
+
+            with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
+                    mock.patch.object(server, "build_graph", return_value={"nodes": [node]}), \
+                    mock.patch.object(server.github, "account_for", return_value="work"), \
+                    mock.patch.object(self.r, "post", post), \
+                    mock.patch.object(server, "start_reflex") as start, mock.patch.object(server, "plan_reflex") as plan:
+                status, reply = self.call(hub, {"id": node["id"], "plan": {"login": "me"}})
+                self.assertEqual((status, reply["message"]), (202, "devbox1: 시작했어요"))
+                # With the profile that lists the PR on the hub, which the far end must run as.
+                self.assertEqual(sent, [(server.FORWARDED_REFLEX, {"node": node, "check": False, "plan": {"login": "me"}, "listed": "work"},
+                                         server.REFLEX_FORWARD_SEC)])
+                self.r.ok, self.r.error = False, "연결 끊김"
+                with mock.patch.object(self.r, "post", remote.Remote.post.__get__(self.r)):
+                    status, reply = self.call(hub, {"id": node["id"], "check": True})
+                self.assertEqual((status, reply["message"]), (503, "devbox1 에 연결되어 있지 않아요 (연결 끊김)"))
+            self.assertEqual((start.call_count, plan.call_count), (0, 0))  # never run on the hub
+        finally:
+            hub.close()
+
+    def test_handoff_with_the_feature_off_or_a_failed_forward_starts_nothing(self):
+        self.r.fetch()
+        node = {"id": "pr:https://github.com/o/r/pull/3", "roles": ["sent"],
+                "detail": {"url": "https://github.com/o/r/pull/3", "repo": "r"}}
+        with mock.patch.object(server, "HANDOFF", False), mock.patch.object(server, "REFLEX_HOST", ""), \
+                mock.patch.object(server, "start_reflex") as start, mock.patch.object(server, "plan_reflex") as plan:
+            self.assertEqual(self.r.post("/reflex", {"node": node, "check": True})[0], 503)
+            self.assertEqual(self.r.post("/reflex", {"node": node, "plan": {}})[0], 503)
+        self.assertEqual((start.call_count, plan.call_count), (0, 0))
+        hub = RemoteThync([])
+        try:
+            with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
+                    mock.patch.object(server, "build_graph", return_value={"nodes": [node]}), \
+                    mock.patch.object(self.r, "request", side_effect=remote.RemoteError("터널 끊김")), \
+                    mock.patch.object(server, "start_reflex") as start:
+                status, reply = self.call(hub, {"id": node["id"], "plan": {}})
+            self.assertEqual((status, start.call_count), (502, 0))
+            self.assertEqual(reply["message"], "devbox1: 터널 끊김 · 시작됐는지 알 수 없어요. 맡긴 일 카드를 확인해 주세요")
+            with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
+                    mock.patch.object(server, "build_graph", return_value={"nodes": [node]}), \
+                    mock.patch.object(self.r, "post", return_value=(502, {"message": "GitHub 계정이나 PR 을 확인하지 못했어요"})):
+                status, reply = self.call(hub, {"id": node["id"], "plan": {}})
+            # The far end answered: nothing started there, so no "may have started", and it is named once.
+            self.assertEqual((status, reply["message"]), (502, "devbox1: GitHub 계정이나 PR 을 확인하지 못했어요"))
+        finally:
+            hub.close()
+
+    def test_a_far_end_from_before_the_check_step_is_named_and_nothing_starts_here(self):
+        self.r.fetch()
+        node = {"id": "pr:https://github.com/o/r/pull/3", "roles": ["review"],
+                "detail": {"url": "https://github.com/o/r/pull/3", "repo": "r"}}
+        hub = RemoteThync([])
+        try:
+            # An old thync has no FORWARDED_REFLEX path: send_error(404), an HTML body Remote.post reads as {}.
+            with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
+                    mock.patch.object(server, "build_graph", return_value={"nodes": [node]}), \
+                    mock.patch.object(self.r, "post", return_value=(404, {})), \
+                    mock.patch.object(server, "plan_reflex") as plan:
+                status, reply = self.call(hub, {"id": node["id"], "check": True})
+            self.assertEqual((status, plan.call_count), (404, 0))
+            self.assertIn("오래된 버전", reply["message"])
+        finally:
+            hub.close()
+
+    def test_forwarded_handoff_on_a_machine_with_its_own_reflex_host_is_refused(self):
+        self.r.fetch()
+        node = {"id": "pr:https://github.com/o/r/pull/3", "roles": ["sent"],
+                "detail": {"url": "https://github.com/o/r/pull/3", "repo": "r"}}
+        with mock.patch.object(server, "HANDOFF", True), mock.patch.object(server, "REFLEX_HOST", "devbox2"), \
+                mock.patch.object(server, "start_reflex") as start:
+            status, _ = self.r.post("/reflex", {"node": node, "check": False, "plan": {}})
+        self.assertEqual((status, start.call_count), (503, 0))
+
+    @staticmethod
+    def call(hub, body):
+        """POST /reflex to a thync the browser talks to (not forwarded)."""
+        req = urllib.request.Request(f"http://127.0.0.1:{hub.port}/reflex", data=json.dumps(body).encode(),
+                                     headers={"X-Thync-Token": "secret", "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            with e:
+                return e.code, json.loads(e.read())
 
 
 class ExportTest(unittest.TestCase):

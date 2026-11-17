@@ -26,7 +26,7 @@ thync는 여러 서비스에 흩어진 활동을 작업 단위로 묶습니다. 
 | 오른쪽 패널 | 집중하는 일, 백그라운드 작업, 받은 리뷰 요청, 내 PR에 받은 리뷰, 리뷰를 기다리는 내 PR을 확인합니다 |
 | 칸반 보드 | 카드를 끌어 옮기고 제목·메모를 편집합니다. 변경 내용은 Markdown 파일로 저장합니다 |
 | MCP 연동 | 에이전트가 `thync_now`로 현재 작업을 짧은 글로 조회합니다 |
-| PR 위임 | Claude에게 다른 사람의 PR 리뷰나 내 PR의 후속 작업을 맡깁니다. `claude` CLI 등 [실행 조건](docs/handoff.md#실행-조건-확인)이 필요합니다 |
+| PR 위임 | 리뷰 목록의 PR을 Concord 작업으로 Claude에게 맡깁니다. 다른 사람의 PR은 승인될 때까지 리뷰하고, 내 PR은 리뷰에 답하고 병합까지 챙깁니다. `claude` CLI, Concord 플러그인 등 [실행 조건](docs/handoff.md#실행-조건)이 필요합니다 |
 
 뇌 그래프는 작업 이력을 표현하는 시각화입니다. 실제 집중력을 측정하지 않으며, 배치와 밝기의 의미는 [화면 사용법](docs/usage.md)에 설명합니다.
 
@@ -67,7 +67,7 @@ cat "${THYNC_HOME:-$HOME/.thync}/token"
 
 설정과 수집 데이터는 기본적으로 `~/.thync/`에 저장합니다. 웹 서버는 `127.0.0.1`에서 실행하며, 데이터 조회와 변경에는 접근 토큰이 필요합니다.
 
-GitHub·Jira·Notion 활동은 각 서비스에서 조회하고, Obsidian 노트는 이 컴퓨터의 vault 폴더에서 읽습니다. Jira, Notion, vault에는 쓰지 않습니다. PR을 위임하면 Claude CLI가 관련 내용을 처리하며, 다른 사람의 PR 리뷰 결과는 GitHub에 게시합니다. 내 PR에 실행한 스킬은 코드를 수정하고 push할 수 있습니다. 자세한 범위는 [데이터와 보안](docs/security.md)에 설명합니다.
+GitHub·Jira·Notion 활동은 각 서비스에서 조회하고, Obsidian 노트는 이 컴퓨터의 vault 폴더에서 읽습니다. Jira, Notion, vault에는 쓰지 않습니다. PR을 위임하면 Claude CLI가 관련 내용을 처리합니다. 다른 사람의 PR에는 Concord 작업이 리뷰와 승인을 게시하고, 내 PR에서는 코드를 수정해 push하고 조건을 채우면 그 PR을 병합합니다. 자세한 범위는 [데이터와 보안](docs/security.md)에 설명합니다.
 
 ## 더 알아보기
 
@@ -78,7 +78,7 @@ GitHub·Jira·Notion 활동은 각 서비스에서 조회하고, Obsidian 노트
 | 설치, 첫 접속, SSH 접속, 문제 해결 | [설치와 실행](docs/getting-started.md) |
 | 화면·색상, 칸반 카드, MCP 등록 | [화면, 칸반과 MCP](docs/usage.md) |
 | 설정 키, 저장 파일, Jira·Notion·Obsidian 연결, 수집 주기 | [설정과 외부 서비스 연결](docs/configuration.md) |
-| PR 리뷰, 자동 승인 조건, 내 PR의 후속 작업 | [Claude에게 일 맡기기](docs/handoff.md) |
+| PR 위임의 실행 조건, 확인 창, 허용 동작, 진행 상태 | [Claude에게 일 맡기기](docs/handoff.md) |
 | 접근 토큰, 외부 전송, 쓰기 권한 | [데이터와 보안](docs/security.md) |
 | 코드 구조, 데이터 흐름, HTTP API, 출처 추가 | [아키텍처](docs/architecture.md) |
 | 밝기·집중·배치 규칙, 상수와 연구 근거 | [뇌 모델과 근거](docs/brain-model.md) |

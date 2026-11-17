@@ -28,17 +28,16 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 | 키 | 뜻 | 기본값 |
 | --- | --- | --- |
 | `sources` | 읽을 출처. `claude_code`(Claude Code 세션 로그), `codex`(Codex CLI·Desktop 세션 로그), `github`(내 커밋, 리뷰 요청, 내 PR), `jira`(나에게 배정된 티켓), `notion`(최근에 고친 페이지), `obsidian`(`obsidian_vaults`에 적은 vault에서 최근에 고친 노트) | 여섯 가지 모두 |
-| `mien_profiles` | 계정을 읽을 [mien](https://github.com/arinyaho/mien) 프로필 목록. 예: `["work", "personal"]`. 지금은 각 프로필의 GitHub 계정만 읽으며, `mien whoami`에 GitHub 계정이 없는 프로필은 건너뜁니다. 계정마다 리뷰 요청·내 PR·커밋을 읽어 한 화면에 합칩니다. 같은 PR이 두 계정에 보이면 한 번만 보입니다. PR 상세 리뷰 조회와 위임한 리뷰 게시는 그 PR을 지금 목록에 올린 계정으로 합니다. 두 계정이 함께 올렸다면 리뷰 요청을 받은 계정이 그 PR을 쓴 계정보다 먼저이고, 그다음은 이 목록의 순서입니다. 어느 계정도 목록에 올리지 않은 PR에는 리뷰를 게시하지 않습니다. 호출마다 `mien exec <프로필> -- gh …`로 실행하므로 서버 환경에서 `mien`을 찾을 수 있어야 하며, 호출당 약 2초가 더 걸립니다. 이때 `gh`에 저장된 로그인은 쓰지 않습니다. mien이 없어도 이 키를 비워 두면 `gh`만으로 동작합니다 | `[]` (`gh`의 활성 계정 하나) |
-| `company_roots` | 이 폴더 아래에서 시작한 세션은 회사 프로필이 됩니다. PR을 맡길 때 로컬 저장소를 찾는 위치이기도 합니다 | `[]` (세션은 모두 개인) |
+| `mien_profiles` | 계정을 읽을 [mien](https://github.com/arinyaho/mien) 프로필 목록. 예: `["work", "personal"]`. 지금은 각 프로필의 GitHub 계정만 읽으며, `mien whoami`에 GitHub 계정이 없는 프로필은 건너뜁니다. 계정마다 리뷰 요청·내 PR·커밋을 읽어 한 화면에 합칩니다. 같은 PR이 두 계정에 보이면 한 번만 보입니다. PR 상세 리뷰 조회는 그 PR을 지금 목록에 올린 계정으로 합니다. 두 계정이 함께 올렸다면 리뷰 요청을 받은 계정이 그 PR을 쓴 계정보다 먼저이고, 그다음은 이 목록의 순서입니다. PR을 맡길 때는 목록에 올린 프로필로 실행하며, 클론에 mien 프로필이 있으면 그 프로필과 같아야 하고, 어느 계정도 목록에 올리지 않은 PR은 맡기지 않습니다([실행 조건](handoff.md#실행-조건)). 호출마다 `mien exec <프로필> -- gh …`로 실행하므로 서버 환경에서 `mien`을 찾을 수 있어야 하며, 호출당 약 2초가 더 걸립니다. 이때 `gh`에 저장된 로그인은 쓰지 않습니다. mien이 없어도 이 키를 비워 두면 `gh`만으로 동작합니다 | `[]` (`gh`의 활성 계정 하나) |
+| `company_roots` | 이 폴더 아래에서 시작한 세션은 회사 프로필이 됩니다. PR을 맡길 때 로컬 저장소를 찾는 위치이기도 합니다(바로 아래 폴더, 이름순) | `[]` (세션은 모두 개인) |
 | `jira_browse_url` | Jira 티켓 링크 앞부분 (예: `https://example.atlassian.net/browse/`). 티켓 정보를 받아 올 주소도 여기서 정합니다 | 없음 (링크 없음) |
 | `jira_email` | Jira Cloud 계정 이메일. API 토큰과 함께 있으면 티켓 요약·상태·상위 이슈를 자동으로 받아 옵니다 | 없음 (`jira.json`을 손으로 채움) |
 | `cards_dir` | 칸반 카드 파일을 둘 폴더. Obsidian vault 안 폴더를 지정해도 됩니다. 이 폴더에 있는 Obsidian Kanban 보드 파일과 UTF-8이 아닌 파일은 카드로 읽지 않습니다 | `<THYNC_HOME>/cards` (기본 `~/.thync/cards`) |
 | `port` | 서버 포트 | `8765` |
 | `tailscale_users` | `tailscale serve`로 접속할 때 토큰 없이 허용할 Tailscale 로그인 이름 목록. 예: `["me@example.com"]`. 목록의 사용자는 토큰과 같은 권한(조회, 카드 수정, PR 위임)을 받습니다. 로그인 이름은 `tailscale whois <이 기기의 Tailscale IP>`의 `User` 아래 `Name`에 나옵니다. `tailscale serve --bg <포트>`로 연 이 컴퓨터의 MagicDNS 주소에서만 적용됩니다. 다른 사용자가 있는 컴퓨터에서는 쓰지 않습니다 ([데이터와 보안](security.md#접근-토큰과-저장-위치)) | `[]` (모두 토큰 필요) |
-| `reflex_skills` | 내 PR을 맡길 때 실행할 Claude Code 스킬 (`sent`) | `pr-review-watch` |
 | `ask_wait_sec` | 질문 hook 이 thync 의 답을 기다리는 시간(초). 지나면 세션이 직접 묻습니다 ([사용법](usage.md#선택-대기-질문에-thync-에서-답하기-pretooluse-hook)) | `300` |
 | `remotes` | 이 화면에 함께 보일 다른 서버 목록. `[{"name": "devbox1", "ssh": "devbox1"}]`. `ssh`는 `ssh` 명령에 주는 호스트, `port`(기본 `8765`)와 `thync_home`(기본 `~/.thync`)은 그 서버의 thync 값입니다 ([여러 서버를 한 화면에서](#여러-서버를-한-화면에서)) | `[]` |
-| `reflex_host` | PR 을 맡길 때 Claude 를 실행할 서버(`remotes`의 `name`). 그 서버의 저장소와 tmux 에서 돕니다 | 없음 (이 머신) |
+| `reflex_host` | PR 을 맡길 때 Claude 를 실행할 서버(`remotes`의 `name`). 그 서버의 저장소, mien 프로필, tmux 에서 돕니다 | 없음 (이 머신) |
 | `notion_user_id` | 이 Notion 사용자가 마지막으로 고친 페이지만 사용합니다 | 없음 (integration이 볼 수 있는 페이지 모두) |
 | `obsidian_board` | thync 칸반에 함께 보일 Obsidian Kanban 보드 파일 하나. 경로이거나 `{"path": "~/vault/칸반.md", "profile": "회사"}`. 읽기만 합니다 ([Obsidian 칸반 보드](#obsidian-칸반-보드)) | 없음 |
 | `obsidian_vaults` | 읽을 Obsidian vault 목록. `[{"path": "~/vault", "profile": "회사", "name": "work"}]`. `profile`은 `회사` 또는 `개인`(기본), `name`은 thync 안에서 vault를 구분하는 이름(기본은 폴더 이름)입니다 ([Obsidian](#obsidian)) | `[]` (읽지 않음) |
@@ -56,7 +55,8 @@ cp config.example.json "${THYNC_HOME:-$HOME/.thync}/config.json"
 | `notion_token` | Notion integration 토큰 (선택). 환경 변수 `NOTION_TOKEN`으로 줘도 됩니다. `chmod 600`으로 둡니다. 다른 사용자가 읽을 수 있으면 서버 로그에 경고를 남깁니다 |
 | `names.json` | 화면에서 바꾼 노드 이름 |
 | `cards/*.md` | 칸반 카드 ([파일 형식](usage.md#칸반-카드-파일)) |
-| `reflex.json` | Claude에게 맡긴 PR과 진행 상태 (tmux 세션 이름이나 리뷰 결과) |
+| `reflex.json` | Claude에게 맡긴 PR: tmux 세션 이름, 작업, 실행 계정과 프로필, 클론 경로, 시작 시각 |
+| `handoff/` | 맡긴 세션이 끝날 때 쓰는 종료 코드 파일 (`<세션 이름>.<시작 시각>.exit`) |
 
 ## 여러 서버를 한 화면에서
 
@@ -87,7 +87,7 @@ flowchart LR
 
 - **프로필**: 다른 서버의 세션이 회사인지 개인인지는 그 서버의 `company_roots`로 정합니다. 허브의 `company_roots`는 허브 자신의 세션에만 씁니다.
 - **선택 대기 질문**: 화면에서 고른 답은 그 세션이 있는 서버의 thync 로 넘어갑니다. 그 서버에 질문 hook 이 등록되어 있어야 합니다([사용법](usage.md#선택-대기-질문에-thync-에서-답하기-pretooluse-hook)).
-- **PR 맡기기**: `reflex_host`를 주면 그 서버의 저장소와 tmux 에서 Claude 가 돕니다. 칸반의 맡긴 일 카드에는 `ssh -t <호스트> tmux attach -t <이름>`이 보입니다.
+- **PR 맡기기**: `reflex_host`를 주면 확인과 시작 요청 모두 그 서버로 한 번 넘기고, 클론·실행 계정·tmux 는 그 서버의 것을 씁니다. `mien_profiles`를 쓰면 두 머신의 mien 프로필 이름이 같아야 하고, 그 서버의 thync 도 이 버전 이상이어야 합니다(아니면 허브가 업데이트하라고 알립니다). 그 서버에 연결되지 않거나 넘기다 실패하면 허브에서 대신 실행하지 않습니다. 칸반의 맡긴 일 카드에는 `ssh -t <호스트> tmux attach -t <이름>`이 보입니다.
 - **GitHub·Jira·Notion·Obsidian·칸반·이름 바꾸기**: 허브의 설정과 `~/.thync`를 씁니다. 서버의 thync 가 이 출처를 켜 두어도 허브는 세션만 가져오므로 중복되지 않습니다. 다른 서버에 있는 vault의 노트는 허브에 보이지 않습니다.
 - **허브 자신의 세션**: 허브 머신의 Claude Code 세션도 `sources`에 `claude_code`가 있으면 함께 보입니다.
 
