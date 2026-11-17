@@ -232,27 +232,32 @@ def review_state(pr: dict) -> str:
 
 
 _canonical: dict[str, str] = {}
-
-
-def knows_name(slug: str) -> bool:
-    """Whether some account answered canonical_slug for this slug."""
-    return slug in _canonical
+_not_found: dict[str, float] = {}  # slug -> when every account that reads GitHub answered 404 for it
+NOT_FOUND_SEC = 3600  # how long such a slug is not asked again (each try costs a mien call per account)
 
 
 def canonical_slug(slug: str) -> str:
-    """Current 'owner/name' of a repository, so a renamed repo still matches its old remote URL. Only answers
-    GitHub gave are remembered; a failed lookup falls back to the slug and is tried again next time.
+    """Current 'owner/name' of a repository, so a renamed repo still matches its old remote URL. Answers GitHub gave
+    are remembered, and so for an hour is a repository every account was told does not exist (deleted, or no access);
+    any other failure (timeout, network) falls back to the slug and is tried again next time.
     Each account that answers is asked in turn, since a private repository is visible to only one of them."""
     if slug not in _canonical:
+        if time.time() - _not_found.get(slug, 0) < NOT_FOUND_SEC:
+            return slug.lower()
+        missing = True
         for a in readers() or ACCOUNTS[:1]:
             try:
                 name = gh(a, "api", f"repos/{slug}", "--jq", ".full_name").strip()
-            except FAILED:
+            except FAILED as e:
+                missing = missing and "HTTP 404" in str(getattr(e, "stderr", "") or "")
                 continue
             if name:
                 _canonical[slug] = name.lower()
+                _not_found.pop(slug, None)
                 break
         else:
+            if missing:
+                _not_found[slug] = time.time()
             return slug.lower()
     return _canonical[slug]
 

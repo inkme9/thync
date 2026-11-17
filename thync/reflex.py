@@ -128,31 +128,16 @@ def clones_under_roots() -> list[str]:
     return [str(p) for r in COMPANY_ROOTS for p in sorted(Path(r).glob("*/")) if (p / ".git").is_dir()]
 
 
-_unknown_names: dict[str, float] = {}  # origin -> when no account could name it (gone, or no access)
-UNKNOWN_NAME_SEC = 3600  # how long such an origin is left out of a check's rename lookups
-
-
-def current_name(origin: str) -> str:
-    """canonical_slug, remembering an origin no account could name for an hour: each try costs a mien call per
-    account, and a check would pay it for every such clone."""
-    if time.time() - _unknown_names.get(origin, 0) < UNKNOWN_NAME_SEC:
-        return origin
-    name = canonical_slug(origin)
-    if github.knows_name(origin):
-        _unknown_names.pop(origin, None)
-    else:
-        _unknown_names[origin] = time.time()
-    return name
-
-
 def learn_clone_names() -> None:
     """Ask GitHub, in the background at start, for the current name of every clone's repository, so a hand-off whose
     clone has an old name does not wait on those lookups (about 2 s each through mien; a minute or two for 30
     clones). It waits for GitHub's first read so that every account that answered is asked."""
-    while "github" in SOURCES and not github.refreshed:
+    for _ in range(120):  # ten minutes at most; a check still looks names up when it needs them
+        if "github" not in SOURCES or github.refreshed:
+            break
         time.sleep(5)
     for origin in dict.fromkeys(o for c in clones_under_roots() if (o := origin_of(c))):
-        current_name(origin)
+        canonical_slug(origin)
 
 
 def find_clone(slug: str, repo: str) -> str | None:
@@ -167,7 +152,7 @@ def find_clone(slug: str, repo: str) -> str | None:
         return exact
     asked = list(dict.fromkeys([slug, *(o for o in origins.values() if o)]))
     with ThreadPoolExecutor(max_workers=8) as pool:  # names learn_clone_names has not learned yet, at once
-        names = dict(zip(asked, pool.map(current_name, asked)))
+        names = dict(zip(asked, pool.map(canonical_slug, asked)))
     return next((c for c, o in origins.items() if o and names[o] == names[slug]), None)
 
 
