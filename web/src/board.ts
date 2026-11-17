@@ -99,7 +99,11 @@ export function renderBoard(): void {
 }
 
 for (const section of boardEl.querySelectorAll<HTMLElement>("section")) {
-  section.ondragover = (e) => { e.preventDefault(); section.classList.add("over"); };
+  section.ondragover = (e) => {
+    if (!e.dataTransfer?.types.includes("text/plain")) return; // a card, not a review-list row
+    e.preventDefault();
+    section.classList.add("over");
+  };
   section.ondragleave = () => section.classList.remove("over");
   section.ondrop = async (e) => {
     e.preventDefault();

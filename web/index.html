@@ -100,6 +100,7 @@
     .seg button.on { color: var(--ink); border-color: var(--quiet); }
     h2 { font-size: 11px; letter-spacing: .12em; color: var(--quiet); margin: 18px 0 8px; font-weight: 600; }
     ul { list-style: none; margin: 0; padding: 0; }
+    aside li + li { margin-top: 6px; }  /* bordered rows would otherwise touch */
     li { padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
     li:hover { background: #1c1b21; }
     li.focus { border-color: rgba(255, 207, 107, .45); background: rgba(255, 207, 107, .07); }
@@ -128,9 +129,12 @@
     li:has(button.hand) { padding-right: 150px; }
     li[draggable="true"] { cursor: grab; }
     #detail div.handoff { display: block; border-top: 0; padding: 0; }
-    #brain.drop-target::after { content: "여기에 놓으면 Claude 에게 맡겨요"; position: absolute; inset: 8px; display: flex;
-      align-items: flex-end; justify-content: center; padding-bottom: 18px; border: 1px dashed rgba(107, 227, 255, .6);
-      border-radius: 10px; color: #6be3ff; font-size: 13px; pointer-events: none; }
+    #spine-target { position: absolute; display: none; pointer-events: none; overflow: visible; }
+    #spine-target.on { display: block; }
+    #spine-target polyline { fill: none; stroke: #6be3ff; stroke-width: 16; stroke-linecap: round; stroke-linejoin: round;
+      opacity: .22; filter: drop-shadow(0 0 6px #6be3ff); transition: opacity .12s, stroke-width .12s; }
+    #spine-target.over polyline { opacity: .6; stroke-width: 26; }
+    #spine-target text { fill: #6be3ff; font-size: 13px; }
     #detail dl.plan { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0 0 12px; font-size: 13px; }
     #detail dl.plan dt { color: var(--quiet); }
     #detail dl.plan dd { margin: 0; overflow-wrap: anywhere; }
@@ -175,6 +179,11 @@
       font: inherit; font-size: 13px; padding: 6px 14px; cursor: pointer; }
     #detail .actions button.primary { border-color: #6be3ff; color: #6be3ff; }
     #detail .actions button:disabled { opacity: .5; cursor: default; }
+    #detail .actions button.busy { opacity: 1; }
+    #detail .actions button.busy::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px;
+      vertical-align: -1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+      animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     #detail b { color: var(--quiet); font-weight: 500; }
     #detail input { background: #0f0e12; border: 1px solid var(--line); border-radius: 4px; color: var(--ink);
       font: inherit; padding: 4px 6px; min-width: 0; }
@@ -194,10 +203,11 @@
   <main id="stage">
     <div id="brain">
       <canvas id="graph"></canvas>
+      <svg id="spine-target" aria-hidden="true"><polyline></polyline><text>여기에 놓으면 Claude 에게 맡겨요</text></svg>
       <div id="hud"><span class="dot"></span><b>THYNC</b><form id="token-form" hidden><input type="text" name="username" autocomplete="username" value="thync" hidden><input type="password" name="token" autocomplete="current-password" aria-label="접근 토큰" placeholder="접근 토큰" required><button type="submit">열기</button></form><span id="status">불러오는 중</span></div>
       <button id="rotate" type="button"></button>
       <ul id="live"></ul>
-      <div id="help" title="드래그 회전 · 스크롤 확대 · 노드 클릭 선택 · PR 노드를 맨 아래 줄기에, 리뷰 목록 항목을 뇌에 놓으면 Concord 작업으로 맡김 · 카드는 끌어서 옮기고 두 번 눌러 고침">? 조작법</div>
+      <div id="help" title="드래그 회전 · 스크롤 확대 · 노드 클릭 선택 · PR 노드를 맨 아래 줄기(척수)에, 리뷰 목록 항목을 뇌에 놓으면 Concord 작업으로 맡김 · 카드는 끌어서 옮기고 두 번 눌러 고침">? 조작법</div>
     </div>
     <div id="splitter" title="끌어서 칸반 높이 바꾸기 · 두 번 누르면 원래대로" aria-label="칸반 높이 조절" role="separator" aria-orientation="horizontal"></div>
     <div id="boardbar"><span class="modes"><button data-mode="both">뇌 + 칸반</button><button data-mode="brain">뇌만</button><button data-mode="board">칸반만</button></span><span id="board-hint">끌어서 옮기기 · 제목이나 메모를 두 번 눌러 바로 고치기 · 카드 하나 = Markdown 파일 하나</span><button id="add-card">+ 카드</button></div>
