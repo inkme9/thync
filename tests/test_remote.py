@@ -176,9 +176,9 @@ class HubTest(unittest.TestCase):
         with mock.patch.object(server, "HANDOFF", True), mock.patch.object(server, "REFLEX_HOST", ""), \
                 mock.patch.object(server, "plan_reflex", return_value=(200, shown)) as plan, \
                 mock.patch.object(server, "start_reflex", return_value=(202, "시작했어요")) as start:
-            checked = self.r.post("/reflex", {"node": node, "check": True, "plan": None, "listed": "p"})
+            checked = self.r.post(server.FORWARDED_REFLEX, {"node": node, "check": True, "plan": None, "listed": "p"})
             self.assertEqual(start.call_count, 0)  # a check starts nothing
-            status, reply = self.r.post("/reflex", {"node": node, "check": False, "plan": shown, "listed": "p"})
+            status, reply = self.r.post(server.FORWARDED_REFLEX, {"node": node, "check": False, "plan": shown, "listed": "p"})
         self.assertEqual(checked, (200, {"plan": shown}))
         self.assertEqual((plan.call_args.args[0]["detail"]["url"], plan.call_args.args[1]), (node["detail"]["url"], "p"))
         self.assertEqual((status, reply["message"]), (202, "시작했어요"))
@@ -204,7 +204,7 @@ class HubTest(unittest.TestCase):
                 status, reply = self.call(hub, {"id": node["id"], "plan": {"login": "me"}})
                 self.assertEqual((status, reply["message"]), (202, "devbox1: 시작했어요"))
                 # With the profile that lists the PR on the hub, which the far end must run as.
-                self.assertEqual(sent, [("/reflex", {"node": node, "check": False, "plan": {"login": "me"}, "listed": "work"},
+                self.assertEqual(sent, [(server.FORWARDED_REFLEX, {"node": node, "check": False, "plan": {"login": "me"}, "listed": "work"},
                                          server.REFLEX_FORWARD_SEC)])
                 self.r.ok, self.r.error = False, "연결 끊김"
                 with mock.patch.object(self.r, "post", remote.Remote.post.__get__(self.r)):
@@ -238,6 +238,23 @@ class HubTest(unittest.TestCase):
                 status, reply = self.call(hub, {"id": node["id"], "plan": {}})
             # The far end answered: nothing started there, so no "may have started", and it is named once.
             self.assertEqual((status, reply["message"]), (502, "devbox1: GitHub 계정이나 PR 을 확인하지 못했어요"))
+        finally:
+            hub.close()
+
+    def test_a_far_end_from_before_the_check_step_is_named_and_nothing_starts_here(self):
+        self.r.fetch()
+        node = {"id": "pr:https://github.com/o/r/pull/3", "roles": ["review"],
+                "detail": {"url": "https://github.com/o/r/pull/3", "repo": "r"}}
+        hub = RemoteThync([])
+        try:
+            # An old thync has no FORWARDED_REFLEX path: send_error(404), an HTML body Remote.post reads as {}.
+            with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
+                    mock.patch.object(server, "build_graph", return_value={"nodes": [node]}), \
+                    mock.patch.object(self.r, "post", return_value=(404, {})), \
+                    mock.patch.object(server, "plan_reflex") as plan:
+                status, reply = self.call(hub, {"id": node["id"], "check": True})
+            self.assertEqual((status, plan.call_count), (404, 0))
+            self.assertIn("오래된 버전", reply["message"])
         finally:
             hub.close()
 

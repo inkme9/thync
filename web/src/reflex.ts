@@ -1,5 +1,5 @@
 // Hand a PR off to a Concord workflow (docs/design/review-handoff.md). Every entry point opens this confirmation: a
-// review-list row's 맡기기 button or the row dropped on the spine, a PR node dropped on the spine, a card dropped on
+// review-list row's 맡기기 button or the row dropped on the brain, a PR node dropped on the spine, a card dropped on
 // "맡긴 일". The machine that runs the work checks the clone, account and author and shows them here; starting
 // checks again there and refuses if anything changed.
 import { post } from "./api.ts";
@@ -104,9 +104,10 @@ export function openReflex(id: string): void {
     if (!plan) return;
     ok.disabled = true;
     const n = selected();
-    const res = await post("/reflex", { id: n.id, plan });
-    const { message } = await res.json().catch(() => ({ message: `실패 (${res.status})` }));
+    const res = await post("/reflex", { id: n.id, plan }).catch(() => null);
+    const { message } = res ? await res.json().catch(() => ({ message: `실패 (${res.status})` }))
+      : { message: "서버에 연결하지 못했어요. 시작됐는지 맡긴 일 카드를 확인해 주세요" };
     if (detailBox.contains(row)) detailBox.replaceChildren(p(message)); // only into this dialog, if still open
-    if (res.ok) renderer.burst(n.id, ROLE_COLOR.running, 1500);
+    if (res?.ok) renderer.burst(n.id, ROLE_COLOR.running, 1500);
   };
 }

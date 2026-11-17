@@ -27,7 +27,7 @@ def pr_node(role: str, url: str = A) -> dict:
 class FakeMachine:
     """subprocess.run for a machine with mien, gh, tmux and a clone of o/r."""
 
-    def __init__(self, author: str, login: str | None = "me", profile: str = "cryptolab", tmux_rc: int = 0, state: str = "open",
+    def __init__(self, author: str, login: str | None = "me", profile: str | None = "cryptolab", tmux_rc: int = 0, state: str = "open",
                  draft: bool = False, alive: tuple = ()):
         self.author, self.login, self.profile, self.tmux_rc, self.state = author, login, profile, tmux_rc, state
         self.draft, self.alive = draft, alive
@@ -46,12 +46,21 @@ class FakeMachine:
         elif argv[:2] == ["git", "-C"]:
             out = "git@github.com:o/r.git\n"
         elif Path(argv[0]).name == "mien" and argv[1] == "which":
-            rc, out = (0, f"{self.profile}\n") if self.profile else (1, "")
+            rc, out, err = (0, f"{self.profile}\n", "") if self.profile else \
+                (1, "", "Error: no profile claims /x." if self.profile == "" else "Error: two profiles claim /x.")
         elif "gh" in argv and "user" in argv:
             rc, out, err = (0, f"{self.login}\n", "") if self.login is not None else (1, "", "HTTP 401")
         elif "gh" in argv and any(a.startswith("repos/o/r/pulls/") for a in argv):
             out = json.dumps({"author": self.author, "state": self.state, "draft": self.draft})
         return mock.Mock(returncode=rc, stdout=out, stderr=err)
+
+    def gh(self, account: str, *args: str, **kw) -> str:
+        """sources/github.gh on this machine: through `mien exec <profile> --` when a profile is given."""
+        argv = [*(["mien", "exec", account, "--"] if account else []), "gh", *args]
+        r = self(argv)
+        if r.returncode:
+            raise subprocess.CalledProcessError(r.returncode, argv, r.stdout, r.stderr)
+        return r.stdout
 
     def launches(self) -> list[str]:
         """The shell script of every tmux session started (`tmux new-session ... sh -c <script>`)."""
@@ -83,7 +92,7 @@ class HandoffTest(unittest.TestCase):
 
     def run_handoff(self, node: dict, machine: FakeMachine, cache: Path | None = None, call=None, which=None,
                     clone: str | None = ""):
-        with mock.patch("subprocess.run", machine), \
+        with mock.patch("subprocess.run", machine), mock.patch.object(reflex.github, "gh", machine.gh), \
                 mock.patch.object(reflex, "find_clone", return_value=self.clone if clone == "" else clone), \
                 mock.patch.object(reflex, "save_reflex", lambda url, rec: self.saved.update({url: rec})), \
                 mock.patch.object(reflex, "PLUGIN_CACHE", cache or self.cache, create=True), \
@@ -162,15 +171,25 @@ class HandoffTest(unittest.TestCase):
                                      call=lambda n: reflex.start_reflex(n, None, "other"))
         self.assertEqual((status, self.saved), (409, {}))
 
+    def test_a_mien_claim_that_cannot_be_read_is_not_taken_as_no_claim(self):
+        machine = FakeMachine(author="alice", profile=None)  # e.g. two profiles claim the clone
+        status, reply = self.run_handoff(pr_node("review"), machine, call=lambda n: reflex.plan_reflex(n, "cryptolab"))
+        self.assertEqual(status, 409)
+        self.assertIn("two profiles claim", reply["message"])
+        self.assertEqual([c for c in machine.calls if "gh" in c], [])
+
+    def test_my_pr_another_of_my_accounts_is_asked_to_review_is_a_review_request(self):
+        node = {**pr_node("sent"), "roles": ["review", "sent"]}  # graph.py gives such a node both roles
+        machine = FakeMachine(author="me-at-work", login="me")
+        status, plan = self.run_handoff(node, machine, call=reflex.plan_reflex)
+        self.assertEqual((status, plan["workflow"]), (200, "concord:review-until-approve"))
+
     def test_unclaimed_clone_runs_as_the_profile_that_lists_the_pr(self):
         machine = FakeMachine(author="alice", profile="")
         status, plan = self.run_handoff(pr_node("review"), machine, call=lambda n: reflex.plan_reflex(n, "cryptolab"))
         self.assertEqual((status, plan["profile"]), (200, "cryptolab"))
         gh_calls = [c for c in machine.calls if "gh" in c]
         self.assertTrue(gh_calls and all(c[:4] == ["mien", "exec", "cryptolab", "--"] for c in gh_calls))
-        # ...never borrowing gh's own login or an inherited token for the account check
-        env = machine.envs["mien exec"]
-        self.assertTrue(env["GH_CONFIG_DIR"] and "GH_TOKEN" not in env)
         status, _ = self.run_handoff(pr_node("review"), FakeMachine(author="alice", profile=""),
                                      call=lambda n: reflex.plan_reflex(n, ""))
         self.assertEqual(status, 409)  # no claim and no listing profile: nothing to run as
@@ -282,12 +301,19 @@ class RemoteUrlTest(unittest.TestCase):
                 self.assertEqual(reflex.github_slug(url), "", url)
 
     def test_ssh_alias_resolves_from_ssh_config(self):
-        reflex.ssh_host.cache_clear()
+        reflex._ssh_hosts.clear()
         out = mock.Mock(stdout="user git\nhostname github.com\nport 22\n")
         with mock.patch("subprocess.run", return_value=out) as run:
             self.assertEqual(reflex.ssh_host("gh-cl"), "github.com")
-        self.assertEqual(run.call_args.args[0], ["ssh", "-G", "gh-cl"])
-        reflex.ssh_host.cache_clear()
+        self.assertEqual(run.call_args.args[0], ["ssh", "-G", "--", "gh-cl"])  # never read as an ssh option
+        with mock.patch("subprocess.run", side_effect=subprocess.TimeoutExpired("ssh", 10)):
+            self.assertEqual(reflex.ssh_host("gh-slow"), "gh-slow")
+        self.assertNotIn("gh-slow", reflex._ssh_hosts)  # a failed lookup is tried again next time
+        reflex._ssh_hosts.clear()
+
+    def test_github_ssh_over_port_443_counts_as_github(self):
+        with mock.patch.object(reflex, "ssh_host", lambda alias: "ssh.github.com"):
+            self.assertEqual(reflex.github_slug("git@gh-443:o/r.git"), "o/r")
 
 
 class FindCloneTest(unittest.TestCase):

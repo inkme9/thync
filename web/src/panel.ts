@@ -1,6 +1,6 @@
 // The side panel: what I focus on, background work, review requests, my PRs under review.
 // Clicking an item highlights it on the brain; only its 상세 button opens the detail modal. A row of the three
-// review lists is handed to Claude with its 맡기기 button or by dragging it onto the spine (reflex.ts).
+// review lists is handed to Claude with its 맡기기 button or by dragging it onto the brain (reflex.ts).
 import { openDetail } from "./detail.ts";
 import { focus } from "./main.ts";
 import { openReflex } from "./reflex.ts";

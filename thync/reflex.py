@@ -2,9 +2,9 @@
 
 Someone else's PR -> /concord:review-until-approve, my PR -> /concord:pr-to-merge for that PR only. Both run in an
 interactive Claude Code session in tmux, in a local clone of the PR's repository, as the mien profile that claims the
-clone. plan_reflex() checks everything and starts nothing; start_reflex() checks again and starts the session.
+clone or, for an unclaimed clone, the one whose account lists the PR. plan_reflex() checks everything and starts
+nothing; start_reflex() checks again and starts the session.
 """
-import functools
 import hashlib
 import json
 import os
@@ -18,7 +18,8 @@ from pathlib import Path
 
 from .config import COMPANY_ROOTS, HOME, STATE_DIR
 from .sources.claude_code import known_sessions, repo_of
-from .sources.github import NO_LOGIN, canonical_slug
+from .sources import github
+from .sources.github import canonical_slug
 from .store import load_reflexes, save_reflex
 
 WORKFLOW = {"review": "concord:review-until-approve", "sent": "concord:pr-to-merge"}
@@ -75,18 +76,27 @@ def run_state(record: dict) -> dict:
     return {"alive": alive, "exit": code}
 
 
+GITHUB_HOSTS = {"github.com", "ssh.github.com"}  # ssh.github.com is GitHub's SSH over port 443
 REMOTE_URL = re.compile(r"^(?:([a-z+]+)://)?(?:[^@/]+@)?([^/:]+)(?::\d+)?[:/](.+?)(?:\.git)?/?$")
 
 
-@functools.lru_cache(maxsize=64)
+_ssh_hosts: dict[str, str] = {}  # alias -> HostName; only answers ssh gave, so a failed lookup is tried again
+
+
 def ssh_host(alias: str) -> str:
     """The host an SSH alias such as `gh-work` stands for (its HostName in ssh config). Several GitHub accounts on
     one machine are usually told apart by such aliases, so a clone's origin often names one instead of github.com."""
-    try:
-        out = subprocess.run(["ssh", "-G", alias], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
-    except (subprocess.SubprocessError, OSError):
-        return alias
-    return next((line.split()[1].lower() for line in out.stdout.splitlines() if line.startswith("hostname ")), alias)
+    if alias not in _ssh_hosts:
+        try:  # `--`: the alias comes from a clone's origin URL and must never be read as an ssh option
+            out = subprocess.run(["ssh", "-G", "--", alias], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                 timeout=10)
+        except (subprocess.SubprocessError, OSError):
+            return alias
+        host = next((line.split()[1].lower() for line in out.stdout.splitlines() if line.startswith("hostname ")), "")
+        if not host:
+            return alias
+        _ssh_hosts[alias] = host
+    return _ssh_hosts[alias]
 
 
 def github_slug(remote: str) -> str:
@@ -96,21 +106,26 @@ def github_slug(remote: str) -> str:
         return ""
     scheme, host, path = m.groups()
     host = host.lower()
-    if host != "github.com" and scheme in (None, "ssh"):
+    if host not in GITHUB_HOSTS and scheme in (None, "ssh"):
         host = ssh_host(host)
-    return path.lower() if host == "github.com" and path.count("/") == 1 else ""
+    return path.lower() if host in GITHUB_HOSTS and path.count("/") == 1 else ""
 
 
 def origin_of(path: str) -> str:
     """'owner/name' of the GitHub repository a clone's origin points at, or "" when it is not a GitHub clone."""
     if not Path(path).is_dir():
         return ""
-    out = subprocess.run(["git", "-C", path, "remote", "get-url", "origin"], capture_output=True, text=True, timeout=10)
+    try:
+        out = subprocess.run(["git", "-C", path, "remote", "get-url", "origin"], capture_output=True, text=True,
+                             timeout=10)
+    except (subprocess.SubprocessError, OSError):
+        return ""
     return github_slug(out.stdout) if out.returncode == 0 else ""
 
 
 def find_clone(slug: str, repo: str) -> str | None:
-    # Standalone clones under the configured roots first; session folders may be submodules.
+    """A clone whose origin is exactly the PR's repository, standalone clones under the configured roots before session
+    folders (which may be submodules); failing that, one whose origin is the repository's old name."""
     candidates = [str(p) for r in COMPANY_ROOTS for p in sorted(Path(r).glob("*/")) if (p / ".git").is_dir()]
     candidates += [s.cwd.split("/.claude/worktrees/")[0] for s in known_sessions() if s.cwd and repo_of(s.cwd) == repo]
     origins = {c: origin_of(c) for c in dict.fromkeys(candidates)}
@@ -124,24 +139,13 @@ def skill_installed(skill: str) -> bool:
     return any(PLUGIN_CACHE.glob(f"*/concord/*/skills/{skill.split(':')[1]}/SKILL.md"))
 
 
-def _run(argv: list[str], cwd: str) -> str:
-    env = None
-    if argv[0] == "mien":
-        # As sources/github.gh: a profile without GitHub must fail, not borrow gh's own login or an inherited token.
-        NO_LOGIN.mkdir(parents=True, exist_ok=True)
-        env = {**{k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")},
-               "GH_CONFIG_DIR": str(NO_LOGIN)}
-    out = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", timeout=30)
-    if out.returncode != 0:
-        raise RuntimeError(out.stderr.strip()[-200:] or f"exit {out.returncode}")
-    return out.stdout.strip()
-
-
 def plan_reflex(node: dict, listed: str | None = "") -> tuple[int, dict]:
     """Everything start_reflex needs, checked: (200, plan) or (error status, {"message": ...}). Starts nothing.
     `listed` is the mien profile whose GitHub account lists the PR (sources/github.account_for): "" when thync reads
     gh's active account only, None when no configured account lists it."""
-    role = next((r for r in ("sent", "review") if r in node.get("roles", [])), None)
+    # A PR one of my accounts wrote and another is asked to review is a review request, as sources/github.account_for
+    # and the dialog take it.
+    role = next((r for r in ("review", "sent") if r in node.get("roles", [])), None)
     m = PR_URL.fullmatch(str(node.get("detail", {}).get("url", "")))
     if not role or not m:
         return 400, {"message": "리뷰 요청이나 내 PR 만 맡길 수 있어요"}
@@ -172,8 +176,14 @@ def plan_reflex(node: dict, listed: str | None = "") -> tuple[int, dict]:
     if shutil.which("mien"):
         # Without MIEN_PROFILE, which mien would report ahead of the clone's own claim.
         env = {k: v for k, v in os.environ.items() if k != "MIEN_PROFILE"}
-        out = subprocess.run(["mien", "which"], cwd=clone, env=env, capture_output=True, text=True, timeout=30)
-        claimed = out.stdout.strip().splitlines()[-1] if out.returncode == 0 and out.stdout.strip() else ""
+        try:
+            out = subprocess.run(["mien", "which"], cwd=clone, env=env, capture_output=True, text=True, timeout=30)
+        except (subprocess.SubprocessError, OSError) as e:
+            return 502, {"message": f"{clone} 의 mien 프로필을 확인하지 못했어요 ({e.__class__.__name__})"}
+        if out.returncode == 0 and out.stdout.strip():
+            claimed = out.stdout.strip().splitlines()[-1]
+        elif "no profile claims" not in out.stderr:  # two claims clash, an unapproved .mien, a broken config
+            return 409, {"message": f"{clone} 의 mien 프로필을 정하지 못했어요 ({out.stderr.strip()[-200:]})"}
     elif listed:
         return 503, {"message": f"목록에 올린 mien 프로필({listed})로 실행하려면 이 머신에 mien 이 있어야 해요"}
     if listed and claimed and listed != claimed:
@@ -183,13 +193,15 @@ def plan_reflex(node: dict, listed: str | None = "") -> tuple[int, dict]:
     profile = claimed or listed  # an unclaimed clone runs as the profile whose account lists the PR
     if shutil.which("mien") and not profile:
         return 409, {"message": f"{clone} 를 맡은 mien 프로필이 없어요 (mien claim <프로필>)"}
-    prefix = ["mien", "exec", profile, "--"] if profile else []
     try:
-        login = _run([*prefix, "gh", "api", "user", "--jq", ".login"], clone)
-        pr = json.loads(_run([*prefix, "gh", "api", f"repos/{slug}/pulls/{number}", "--jq",
-                              "{author: .user.login, state: .state, draft: .draft}"], clone))
-    except (RuntimeError, subprocess.SubprocessError, OSError, ValueError) as e:
-        return 502, {"message": f"GitHub 계정이나 PR 을 확인하지 못했어요 ({e})"}
+        # As every account read: through mien without gh's own login, interrupted (not killed) on a timeout so mien
+        # removes the credential files it wrote.
+        login = github.gh(profile, "api", "user", "--jq", ".login", timeout=30).strip()
+        pr = json.loads(github.gh(profile, "api", f"repos/{slug}/pulls/{number}", "--jq",
+                                  "{author: .user.login, state: .state, draft: .draft}", timeout=30))
+    except (subprocess.SubprocessError, OSError, ValueError) as e:
+        detail = (getattr(e, "stderr", None) or e.__class__.__name__).strip()[-200:]
+        return 502, {"message": f"GitHub 계정이나 PR 을 확인하지 못했어요 ({detail})"}
     if pr.get("state") != "open":
         return 409, {"message": f"{slug}#{number} 는 열려 있지 않아요"}
     mine = pr.get("author", "").lower() == login.lower()

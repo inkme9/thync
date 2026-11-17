@@ -49,7 +49,7 @@ vault 밖의 파일을 읽지 않도록 심볼릭 링크는 따라가지 않습�
 
 ## PR 위임의 권한 범위
 
-두 작업 모두 PR 저장소의 로컬 클론에서 tmux 안의 대화형 Claude Code 세션으로 돌고, `--permission-mode auto`를 씁니다. 세션은 클론을 맡은 mien 프로필로 실행하며(`mien exec`), mien이 없으면 서버 프로세스의 `gh` 계정으로 실행합니다.
+두 작업 모두 PR 저장소의 로컬 클론에서 tmux 안의 대화형 Claude Code 세션으로 돌고, `--permission-mode auto`를 씁니다. 세션은 클론을 맡은 mien 프로필로, 클론에 프로필이 없으면 그 PR을 목록에 올린 프로필(`mien_profiles`)로 실행하며(`mien exec`), mien이 없으면 서버 프로세스의 `gh` 계정으로 실행합니다.
 
 | 대상 | 작업 | 결과 |
 | --- | --- | --- |

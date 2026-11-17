@@ -37,6 +37,9 @@ from .util import BOARD_CARD
 
 TOKEN = ""
 REFLEX_FORWARD_SEC = 300  # longer than the far end's own checks can take
+# Where a hub sends hand-offs. A path of its own: a thync from before the check step would take a check sent to
+# /reflex as a start and run its old workflow, while an unknown path only answers 404.
+FORWARDED_REFLEX = "/reflex/forwarded"
 TAILSCALE_NAME = ""  # this machine's MagicDNS name, set at start when `tailscale_users` is not empty
 
 
@@ -175,7 +178,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         if not self.local_host() or not self.authorized():
             return
-        handler = {"/reflex": self.post_reflex, "/board": self.post_board, "/rename": self.post_rename,
+        handler = {"/reflex": self.post_reflex, FORWARDED_REFLEX: self.post_reflex, "/board": self.post_board, "/rename": self.post_rename,
                    "/answer": self.post_answer, "/ask": self.post_ask}.get(
             urlparse(self.path).path)
         if not handler:
@@ -246,11 +249,14 @@ class Handler(SimpleHTTPRequestHandler):
             # With the profile that lists it here, which the far end must run as.
             listed = github.account_for(str(target["detail"].get("url", "")))
             status, reply = remote.by_name(REFLEX_HOST).post(
-                "/reflex", {"node": target, "check": check, "plan": shown, "listed": listed}, timeout=REFLEX_FORWARD_SEC)
+                FORWARDED_REFLEX, {"node": target, "check": check, "plan": shown, "listed": listed},
+                timeout=REFLEX_FORWARD_SEC)
             if status < 400 and isinstance(reply.get("plan"), dict):
                 self.send_json(status, {"plan": {**reply["plan"], "host": REFLEX_HOST}})
                 return
-            if reply.get("hub"):
+            if status == 404 and not reply:  # no such path: a thync from before the check step
+                message = f"{REFLEX_HOST} 의 thync 가 오래된 버전이에요. 그 서버에서 git pull 후 다시 시작해 주세요"
+            elif reply.get("hub"):
                 message = str(reply["message"])  # made by Remote.post, which already names the machine
             else:  # the far end's answer, named so an attach command in it is read as one for that machine
                 message = f"{REFLEX_HOST}: {reply.get('message') or f'응답 {status}'}"
