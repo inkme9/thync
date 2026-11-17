@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .config import COMPANY_ROOTS, HOME, STATE_DIR
@@ -123,15 +124,34 @@ def origin_of(path: str) -> str:
     return github_slug(out.stdout) if out.returncode == 0 else ""
 
 
+def clones_under_roots() -> list[str]:
+    return [str(p) for r in COMPANY_ROOTS for p in sorted(Path(r).glob("*/")) if (p / ".git").is_dir()]
+
+
+def learn_clone_names() -> None:
+    """Ask GitHub, in the background at start, for the current name of every clone's repository, so a hand-off whose
+    clone has an old name does not wait on those lookups (about 2 s each through mien; a minute for 30 clones).
+    canonical_slug keeps every answer; one that fails is asked again when a hand-off needs it."""
+    for c in clones_under_roots():
+        if origin := origin_of(c):
+            canonical_slug(origin)
+
+
 def find_clone(slug: str, repo: str) -> str | None:
     """A clone whose origin is exactly the PR's repository, standalone clones under the configured roots before session
     folders (which may be submodules); failing that, one whose origin is the repository's old name."""
-    candidates = [str(p) for r in COMPANY_ROOTS for p in sorted(Path(r).glob("*/")) if (p / ".git").is_dir()]
+    candidates = clones_under_roots()
     candidates += [s.cwd.split("/.claude/worktrees/")[0] for s in known_sessions() if s.cwd and repo_of(s.cwd) == repo]
     origins = {c: origin_of(c) for c in dict.fromkeys(candidates)}
-    # An exact match first; asking GitHub about every other clone's name (renames) costs seconds per clone.
+    # An exact match first; asking GitHub about every other clone's name (renames) costs a mien call, about 2 s, each.
     exact = next((c for c, o in origins.items() if o == slug.lower()), None)
-    return exact or next((c for c, o in origins.items() if o and canonical_slug(o) == canonical_slug(slug)), None)
+    if exact:
+        return exact
+    others = [c for c, o in origins.items() if o]
+    with ThreadPoolExecutor(max_workers=8) as pool:  # names learn_clone_names has not learned yet, at once
+        names = list(pool.map(lambda c: canonical_slug(origins[c]), others))
+    target = canonical_slug(slug)
+    return next((c for c, name in zip(others, names) if name == target), None)
 
 
 def skill_installed(skill: str) -> bool:

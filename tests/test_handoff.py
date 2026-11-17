@@ -9,6 +9,8 @@ import re
 import shlex
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -344,6 +346,47 @@ class FindCloneTest(unittest.TestCase):
                 mock.patch.object(reflex, "canonical_slug") as canonical:
             self.assertEqual(reflex.find_clone("O/R", "r"), str(root / "b-target"))
         canonical.assert_not_called()  # a rename lookup is a GitHub call per clone
+
+
+class FindRenamedCloneTest(unittest.TestCase):
+    def test_a_clone_under_the_repositorys_old_name_is_found_asking_github_about_all_at_once(self):
+        root = Path(tempfile.mkdtemp())
+        names = ["a-other", "b-old-name", "c-third"]
+        for name in names:
+            (root / name / ".git").mkdir(parents=True)
+        origins = {str(root / n): f"o/{n}" for n in names}
+        current = {"o/b-old-name": "o/r", "o/r": "o/r"}
+        running, most = 0, 0
+        lock = threading.Lock()
+
+        def canonical(slug):
+            nonlocal running, most
+            with lock:
+                running += 1
+                most = max(most, running)
+            time.sleep(0.2)
+            with lock:
+                running -= 1
+            return current.get(slug, slug)
+
+        with mock.patch.object(reflex, "COMPANY_ROOTS", [str(root)]), mock.patch.object(reflex, "known_sessions", list), \
+                mock.patch.object(reflex, "origin_of", lambda path: origins[path]), \
+                mock.patch.object(reflex, "canonical_slug", canonical):
+            self.assertEqual(reflex.find_clone("o/r", "r"), str(root / "b-old-name"))
+        self.assertGreater(most, 1)  # the lookups overlapped instead of running one after another
+
+
+class LearnCloneNamesTest(unittest.TestCase):
+    def test_every_clone_under_the_roots_has_its_current_name_asked_once(self):
+        root = Path(tempfile.mkdtemp())
+        for name in ("a", "b", "plain"):
+            (root / name / ".git" if name != "plain" else root / name).mkdir(parents=True)
+        origins = {str(root / "a"): "o/a", str(root / "b"): ""}  # b is not a GitHub clone, plain is not a clone
+        with mock.patch.object(reflex, "COMPANY_ROOTS", [str(root)]), \
+                mock.patch.object(reflex, "origin_of", lambda path: origins[path]), \
+                mock.patch.object(reflex, "canonical_slug") as canonical:
+            reflex.learn_clone_names()
+        self.assertEqual([c.args for c in canonical.call_args_list], [("o/a",)])
 
 
 class RunLabelTest(unittest.TestCase):

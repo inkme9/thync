@@ -29,7 +29,7 @@ from .config import (DEFAULT_DAYS, HANDOFF, HOST, MAX_DAYS, PORT, PROFILE_PERSON
                      SESSIONS, SOURCES, STATE_DIR, TAILSCALE_USERS, WEB_DIR)
 from .export import snapshot
 from .graph import build_graph
-from .reflex import plan_reflex, start_reflex
+from .reflex import learn_clone_names, plan_reflex, start_reflex
 from .sources import github, jira, notion, obsidian, remote
 from .sources.claude_code import load_sessions, questions_of
 from .store import BOARD_COLUMNS, load_token, save_card, save_name
@@ -420,6 +420,8 @@ def main() -> None:
     if "obsidian" in SOURCES:
         obsidian.start()
     threading.Thread(target=jira.refresh_forever, daemon=True).start()  # summaries of keys seen anywhere
+    if HANDOFF and not REFLEX_HOST:  # clones and their names matter only where hand-offs run
+        threading.Thread(target=learn_clone_names, daemon=True).start()
     if SESSIONS:
         load_sessions(time.time(), MAX_DAYS * 86400)  # read logs up front so the first page load does not wait
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
