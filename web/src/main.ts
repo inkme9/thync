@@ -83,7 +83,8 @@ const canvas = document.querySelector<HTMLCanvasElement>("#graph")!;
 let pointerUpAt = -Infinity;
 canvas.addEventListener("pointerup", () => { pointerUpAt = performance.now(); });
 state.graph = toGraph();
-renderer.onSpineDrop = openReflex;
+// A node dropped on the spine goes back to its place before the dialog opens; other entry points move nothing.
+renderer.onSpineDrop = (id) => { state.signature = ""; apply(); openReflex(id); };
 // A review-list row dragged from the side panel and dropped anywhere on the brain hands its PR off. Unlike a node
 // dragged inside the brain, which moves when it misses the spine, a row has no other meaning there.
 // The whole #brain takes it, so the status line and buttons drawn over the canvas do too.

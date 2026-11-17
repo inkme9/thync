@@ -175,6 +175,11 @@
       font: inherit; font-size: 13px; padding: 6px 14px; cursor: pointer; }
     #detail .actions button.primary { border-color: #6be3ff; color: #6be3ff; }
     #detail .actions button:disabled { opacity: .5; cursor: default; }
+    #detail .actions button.busy { opacity: 1; }
+    #detail .actions button.busy::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px;
+      vertical-align: -1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+      animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     #detail b { color: var(--quiet); font-weight: 500; }
     #detail input { background: #0f0e12; border: 1px solid var(--line); border-radius: 4px; color: var(--ink);
       font: inherit; padding: 4px 6px; min-width: 0; }
