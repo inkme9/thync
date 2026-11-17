@@ -84,7 +84,8 @@ let pointerUpAt = -Infinity;
 canvas.addEventListener("pointerup", () => { pointerUpAt = performance.now(); });
 state.graph = toGraph();
 renderer.onSpineDrop = openReflex;
-// A review-list row dragged from the side panel onto the spine hands its PR off like a dragged node.
+// A review-list row dragged from the side panel and dropped anywhere on the brain hands its PR off. Unlike a node
+// dragged inside the brain, which moves when it misses the spine, a row has no other meaning there.
 canvas.addEventListener("dragover", (e) => {
   if (e.dataTransfer?.types.includes(NODE_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = "link"; }
 });
@@ -92,7 +93,7 @@ canvas.addEventListener("drop", (e) => {
   const id = e.dataTransfer?.getData(NODE_DRAG);
   if (!id) return;
   e.preventDefault();
-  if (renderer.onSpine(e)) openReflex(id);
+  openReflex(id);
 });
 renderer.start(canvas, () => state.graph, {
   idleAutoRotate: recall("autoRotate") !== "0",

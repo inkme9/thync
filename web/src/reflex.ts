@@ -65,7 +65,7 @@ export function openReflex(id: string): void {
   pick.append(Object.assign(document.createElement("legend"), { textContent: "맡길 PR" }),
     ...targets.map((n, i) => radio("reflex-target", n.id,
       `${n.name} · ${n.roles.includes("review") ? "리뷰 요청" : String(n.detail.review_state ?? "보낸 리뷰")} — ${cut(String(n.detail.text ?? ""), 48)}`, i === 0)));
-  const body = document.createElement("div");
+  const body = Object.assign(document.createElement("div"), { className: "handoff" }); // not a detail row
   const ok = button("시작", true), cancel = button("취소");
   const row = Object.assign(document.createElement("div"), { className: "actions" });
   row.append(cancel, ok);
