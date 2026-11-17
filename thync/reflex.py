@@ -200,7 +200,8 @@ def plan_reflex(node: dict, listed: str | None = "") -> tuple[int, dict]:
         pr = json.loads(github.gh(profile, "api", f"repos/{slug}/pulls/{number}", "--jq",
                                   "{author: .user.login, state: .state, draft: .draft}", timeout=30))
     except (subprocess.SubprocessError, OSError, ValueError) as e:
-        detail = (getattr(e, "stderr", None) or e.__class__.__name__).strip()[-200:]
+        err = None if isinstance(e, subprocess.TimeoutExpired) else getattr(e, "stderr", None)  # bytes on a timeout
+        detail = (err or e.__class__.__name__).strip()[-200:]
         return 502, {"message": f"GitHub 계정이나 PR 을 확인하지 못했어요 ({detail})"}
     if pr.get("state") != "open":
         return 409, {"message": f"{slug}#{number} 는 열려 있지 않아요"}

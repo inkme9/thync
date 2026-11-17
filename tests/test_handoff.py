@@ -91,8 +91,8 @@ class HandoffTest(unittest.TestCase):
         self.exits = Path(tempfile.mkdtemp())
 
     def run_handoff(self, node: dict, machine: FakeMachine, cache: Path | None = None, call=None, which=None,
-                    clone: str | None = ""):
-        with mock.patch("subprocess.run", machine), mock.patch.object(reflex.github, "gh", machine.gh), \
+                    clone: str | None = "", gh=None):
+        with mock.patch("subprocess.run", machine), mock.patch.object(reflex.github, "gh", gh or machine.gh), \
                 mock.patch.object(reflex, "find_clone", return_value=self.clone if clone == "" else clone), \
                 mock.patch.object(reflex, "save_reflex", lambda url, rec: self.saved.update({url: rec})), \
                 mock.patch.object(reflex, "PLUGIN_CACHE", cache or self.cache, create=True), \
@@ -270,6 +270,23 @@ class HandoffTest(unittest.TestCase):
         status, message = self.run_handoff(pr_node("sent"), machine)
         self.assertEqual((status, machine.launches(), self.saved), (502, [], {}))
         self.assertIn("HTTP 401", message)
+
+    def test_timeouts_answer_with_a_reason_and_start_nothing(self):
+        machine = FakeMachine(author="me")
+        def slow_gh(account, *args, **kw):
+            raise subprocess.TimeoutExpired(["gh", *args], 30, stderr=b"partial")
+        status, reply = self.run_handoff(pr_node("sent"), machine, call=reflex.plan_reflex, gh=slow_gh)
+        self.assertEqual((status, reply["message"]), (502, "GitHub 계정이나 PR 을 확인하지 못했어요 (TimeoutExpired)"))
+
+        def slow_mien(argv, **kw):
+            if argv[:2] == ["mien", "which"]:
+                raise subprocess.TimeoutExpired(argv, 30)
+            return machine(argv, **kw)
+        slow_mien.gh, slow_mien.launches = machine.gh, machine.launches
+        status, reply = self.run_handoff(pr_node("sent"), slow_mien, call=reflex.plan_reflex)
+        self.assertEqual(status, 502)
+        self.assertIn("TimeoutExpired", reply["message"])
+        self.assertEqual((machine.launches(), self.saved), ([], {}))
 
     def test_missing_cli_starts_nothing(self):
         machine = FakeMachine(author="me")
