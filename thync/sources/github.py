@@ -232,7 +232,7 @@ def review_state(pr: dict) -> str:
 
 
 _canonical: dict[str, str] = {}
-_not_found: dict[str, float] = {}  # slug -> when every account that reads GitHub answered 404 for it
+_not_found: dict[str, tuple[float, frozenset]] = {}  # slug -> (when, the accounts that all answered 404)
 NOT_FOUND_SEC = 3600  # how long such a slug is not asked again (each try costs a mien call per account)
 
 
@@ -242,10 +242,12 @@ def canonical_slug(slug: str) -> str:
     any other failure (timeout, network) falls back to the slug and is tried again next time.
     Each account that answers is asked in turn, since a private repository is visible to only one of them."""
     if slug not in _canonical:
-        if time.time() - _not_found.get(slug, 0) < NOT_FOUND_SEC:
+        asking = readers() or ACCOUNTS[:1]
+        at, told = _not_found.get(slug, (0.0, frozenset()))
+        if time.time() - at < NOT_FOUND_SEC and set(asking) <= told:  # an account that has not been asked is asked
             return slug.lower()
         missing = True
-        for a in readers() or ACCOUNTS[:1]:
+        for a in asking:
             try:
                 name = gh(a, "api", f"repos/{slug}", "--jq", ".full_name").strip()
             except FAILED as e:
@@ -257,7 +259,7 @@ def canonical_slug(slug: str) -> str:
                 break
         else:
             if missing:
-                _not_found[slug] = time.time()
+                _not_found[slug] = (time.time(), frozenset(asking))
             return slug.lower()
     return _canonical[slug]
 

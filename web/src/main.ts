@@ -85,10 +85,10 @@ canvas.addEventListener("pointerup", () => { pointerUpAt = performance.now(); })
 state.graph = toGraph();
 // A node dropped on the spine goes back to its place before the dialog opens; other entry points move nothing.
 renderer.onSpineDrop = (id) => { state.signature = ""; apply(); openReflex(id); };
-// A review-list row dragged from the side panel onto the spine hands its PR off. While a row is dragged the brain
-// stops turning and the spine lights up; near it (wider than a node drop, which also moves the node) it lights up
-// more and takes the drop. Anywhere else the browser shows that nothing can be dropped.
-const SPINE_DROP_PX = 70;
+// A review-list row dragged from the side panel and dropped on the brain hands its PR off. While a row is dragged
+// the brain stops turning and the spine lights up to say where it goes, brighter when the row is near it; a drop
+// anywhere on the brain still counts, since the spine is small (ticket #10, acceptance criterion 4).
+const SPINE_NEAR_PX = 70;
 const brainBox = document.querySelector<HTMLDivElement>("#brain")!;
 const spineMark = document.querySelector<SVGSVGElement>("#spine-target")!;
 const drawSpine = () => {
@@ -110,14 +110,17 @@ document.addEventListener("dragstart", (e) => { if (e.dataTransfer?.types.includ
 document.addEventListener("dragend", () => { if (spineMark.classList.contains("on")) showSpine(false); });
 brainBox.addEventListener("dragover", (e) => {
   if (!e.dataTransfer?.types.includes(NODE_DRAG)) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "link";
   drawSpine(); // the brain may still be easing to a stop
-  const near = renderer.nearSpineAt(e, SPINE_DROP_PX);
-  spineMark.classList.toggle("over", near);
-  if (near) { e.preventDefault(); e.dataTransfer.dropEffect = "link"; }
+  spineMark.classList.toggle("over", renderer.nearSpineAt(e, SPINE_NEAR_PX));
+});
+brainBox.addEventListener("dragleave", (e) => {
+  if (!brainBox.contains(e.relatedTarget as Node | null)) spineMark.classList.remove("over");
 });
 brainBox.addEventListener("drop", (e) => {
   const id = e.dataTransfer?.getData(NODE_DRAG);
-  if (!id || !renderer.nearSpineAt(e, SPINE_DROP_PX)) return;
+  if (!id) return;
   e.preventDefault();
   showSpine(false);
   openReflex(id);

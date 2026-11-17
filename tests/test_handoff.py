@@ -402,6 +402,14 @@ class CanonicalNameTest(unittest.TestCase):
             self.assertEqual(reflex.github.canonical_slug("O/Gone"), "o/gone")  # same case either way
         self.assertEqual(self.calls, ["work", "home"])  # both accounts once, then nothing for an hour
 
+    def test_an_account_that_starts_reading_later_is_asked_despite_the_404s(self):
+        a, b = self.ask({"work": "gh: Not Found (HTTP 404)"})
+        with a, b:
+            self.assertEqual(reflex.github.canonical_slug("O/Old"), "o/old")
+        a, b = self.ask({"work": "gh: Not Found (HTTP 404)", "home": "O/New"})
+        with a, b:
+            self.assertEqual(reflex.github.canonical_slug("O/Old"), "o/new")  # home had not been asked
+
     def test_a_failure_that_is_not_a_404_is_asked_again_next_time(self):
         a, b = self.ask({"work": "gh: HTTP 504", "home": "gh: Not Found (HTTP 404)"})
         with a, b:

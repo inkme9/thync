@@ -2,6 +2,7 @@
 import { BrainRenderer } from "../../vendor/brain-atlas/src/renderer.ts";
 import { Brain3D, spinePoint } from "../../vendor/brain-atlas/src/shape.ts";
 import type { BrainEdge, BrainGraph } from "../../vendor/brain-atlas/src/types.ts";
+import { nearLine } from "./spine.ts";
 import { state } from "./state.ts";
 
 const SPINE_HIT_PX = 34;
@@ -41,7 +42,7 @@ class ThyncRenderer extends BrainRenderer {
   }
 
   private nearSpine(x: number, y: number, radius = SPINE_HIT_PX): boolean {
-    return this.spineLine().some((s) => Math.hypot(s.x - x, s.y - y) < radius);
+    return nearLine(this.spineLine(), x, y, radius);
   }
 
   /** Send a burst of signals from a node to its neighbors. */
