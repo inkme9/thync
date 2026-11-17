@@ -1,5 +1,5 @@
 // Hand a PR off to a Concord workflow (docs/design/review-handoff.md). Every entry point opens this confirmation: a
-// review-list row's 맡기기 button or the row dropped on the brain, a PR node dropped on the spine, a card dropped on
+// review-list row's 맡기기 button or the row dropped on the spine, a PR node dropped on the spine, a card dropped on
 // "맡긴 일". The machine that runs the work checks the clone, account and author and shows them here; starting
 // checks again there and refuses if anything changed.
 import { post } from "./api.ts";

@@ -1,6 +1,6 @@
 // The side panel: what I focus on, background work, review requests, my PRs under review.
 // Clicking an item highlights it on the brain; only its 상세 button opens the detail modal. A row of the three
-// review lists is handed to Claude with its 맡기기 button or by dragging it onto the brain (reflex.ts).
+// review lists is handed to Claude with its 맡기기 button or by dragging it onto the spine (reflex.ts).
 import { openDetail } from "./detail.ts";
 import { focus } from "./main.ts";
 import { openReflex } from "./reflex.ts";
@@ -30,7 +30,6 @@ export function infoButton(id: string): HTMLButtonElement {
 /** The drag type a review-list row carries, so the board's own card drops ignore it. */
 export const NODE_DRAG = "application/x-thync-node";
 let dragging = false; // the 2 s refresh would replace the row being dragged
-const brain = document.querySelector<HTMLDivElement>("#brain")!;
 
 function item(n: ApiNode, main: string, sub: string, role: string, handoff = false, key = main): HTMLLIElement {
   const li = Object.assign(document.createElement("li"), { className: role });
@@ -44,13 +43,8 @@ function item(n: ApiNode, main: string, sub: string, role: string, handoff = fal
     btn.ondblclick = (e) => e.stopPropagation();
     li.append(btn);
     li.draggable = true;
-    li.ondragstart = (e) => {
-      dragging = true;
-      brain.classList.add("drop-target"); // the brain shows where to drop it
-      e.dataTransfer!.setData(NODE_DRAG, n.id);
-      e.dataTransfer!.effectAllowed = "link";
-    };
-    li.ondragend = () => { dragging = false; brain.classList.remove("drop-target"); };
+    li.ondragstart = (e) => { dragging = true; e.dataTransfer!.setData(NODE_DRAG, n.id); e.dataTransfer!.effectAllowed = "link"; };
+    li.ondragend = () => { dragging = false; };
   }
   li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.textContent}`; });
   return li;

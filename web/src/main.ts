@@ -85,17 +85,41 @@ canvas.addEventListener("pointerup", () => { pointerUpAt = performance.now(); })
 state.graph = toGraph();
 // A node dropped on the spine goes back to its place before the dialog opens; other entry points move nothing.
 renderer.onSpineDrop = (id) => { state.signature = ""; apply(); openReflex(id); };
-// A review-list row dragged from the side panel and dropped anywhere on the brain hands its PR off. Unlike a node
-// dragged inside the brain, which moves when it misses the spine, a row has no other meaning there.
-// The whole #brain takes it, so the status line and buttons drawn over the canvas do too.
+// A review-list row dragged from the side panel onto the spine hands its PR off. While a row is dragged the brain
+// stops turning and the spine lights up; near it (wider than a node drop, which also moves the node) it lights up
+// more and takes the drop. Anywhere else the browser shows that nothing can be dropped.
+const SPINE_DROP_PX = 70;
 const brainBox = document.querySelector<HTMLDivElement>("#brain")!;
+const spineMark = document.querySelector<SVGSVGElement>("#spine-target")!;
+const drawSpine = () => {
+  const line = renderer.spineLine();
+  Object.assign(spineMark.style, { left: `${canvas.offsetLeft}px`, top: `${canvas.offsetTop}px`,
+    width: `${canvas.clientWidth}px`, height: `${canvas.clientHeight}px` });
+  spineMark.querySelector("polyline")!.setAttribute("points", line.map((p) => `${p.x},${p.y}`).join(" "));
+  const mid = line[Math.floor(line.length / 2)], label = spineMark.querySelector("text")!; // beside it, inside the brain
+  label.setAttribute("x", String(mid.x + 24));
+  label.setAttribute("y", String(mid.y + 4));
+};
+const showSpine = (on: boolean) => {
+  spineMark.classList.toggle("on", on);
+  spineMark.classList.remove("over");
+  renderer.setOptions({ idleAutoRotate: !on && recall("autoRotate") !== "0" });
+  if (on) drawSpine();
+};
+document.addEventListener("dragstart", (e) => { if (e.dataTransfer?.types.includes(NODE_DRAG)) showSpine(true); });
+document.addEventListener("dragend", () => { if (spineMark.classList.contains("on")) showSpine(false); });
 brainBox.addEventListener("dragover", (e) => {
-  if (e.dataTransfer?.types.includes(NODE_DRAG)) { e.preventDefault(); e.dataTransfer.dropEffect = "link"; }
+  if (!e.dataTransfer?.types.includes(NODE_DRAG)) return;
+  drawSpine(); // the brain may still be easing to a stop
+  const near = renderer.nearSpineAt(e, SPINE_DROP_PX);
+  spineMark.classList.toggle("over", near);
+  if (near) { e.preventDefault(); e.dataTransfer.dropEffect = "link"; }
 });
 brainBox.addEventListener("drop", (e) => {
   const id = e.dataTransfer?.getData(NODE_DRAG);
-  if (!id) return;
+  if (!id || !renderer.nearSpineAt(e, SPINE_DROP_PX)) return;
   e.preventDefault();
+  showSpine(false);
   openReflex(id);
 });
 renderer.start(canvas, () => state.graph, {
