@@ -369,11 +369,25 @@ class FindRenamedCloneTest(unittest.TestCase):
                 running -= 1
             return current.get(slug, slug)
 
+        reflex._unknown_names.clear()
         with mock.patch.object(reflex, "COMPANY_ROOTS", [str(root)]), mock.patch.object(reflex, "known_sessions", list), \
                 mock.patch.object(reflex, "origin_of", lambda path: origins[path]), \
-                mock.patch.object(reflex, "canonical_slug", canonical):
+                mock.patch.object(reflex, "canonical_slug", canonical), \
+                mock.patch.object(reflex.github, "knows_name", return_value=True):
             self.assertEqual(reflex.find_clone("o/r", "r"), str(root / "b-old-name"))
         self.assertGreater(most, 1)  # the lookups overlapped instead of running one after another
+
+    def test_an_origin_no_account_can_name_is_not_asked_again_for_an_hour(self):
+        reflex._unknown_names.clear()
+        with mock.patch.object(reflex, "canonical_slug", side_effect=lambda slug: slug) as canonical, \
+                mock.patch.object(reflex.github, "knows_name", return_value=False):
+            self.assertEqual((reflex.current_name("o/gone"), reflex.current_name("o/gone")), ("o/gone", "o/gone"))
+        self.assertEqual(canonical.call_count, 1)
+        reflex._unknown_names["o/gone"] -= reflex.UNKNOWN_NAME_SEC  # an hour later
+        with mock.patch.object(reflex, "canonical_slug", return_value="o/new") as canonical, \
+                mock.patch.object(reflex.github, "knows_name", return_value=True):
+            self.assertEqual(reflex.current_name("o/gone"), "o/new")
+        self.assertNotIn("o/gone", reflex._unknown_names)
 
 
 class LearnCloneNamesTest(unittest.TestCase):
@@ -382,11 +396,24 @@ class LearnCloneNamesTest(unittest.TestCase):
         for name in ("a", "b", "plain"):
             (root / name / ".git" if name != "plain" else root / name).mkdir(parents=True)
         origins = {str(root / "a"): "o/a", str(root / "b"): ""}  # b is not a GitHub clone, plain is not a clone
+        reflex._unknown_names.clear()
         with mock.patch.object(reflex, "COMPANY_ROOTS", [str(root)]), \
                 mock.patch.object(reflex, "origin_of", lambda path: origins[path]), \
+                mock.patch.object(reflex.github, "refreshed", 1.0), \
+                mock.patch.object(reflex.github, "knows_name", return_value=True), \
                 mock.patch.object(reflex, "canonical_slug") as canonical:
             reflex.learn_clone_names()
         self.assertEqual([c.args for c in canonical.call_args_list], [("o/a",)])
+
+    def test_learning_waits_for_githubs_first_read(self):
+        slept = []
+        def sleep(sec):
+            slept.append(sec)
+            reflex.github.refreshed = 1.0  # the first read finishes meanwhile
+        with mock.patch.object(reflex.github, "refreshed", 0.0), mock.patch.object(reflex, "SOURCES", {"github"}), \
+                mock.patch.object(reflex.time, "sleep", sleep), mock.patch.object(reflex, "clones_under_roots", list):
+            reflex.learn_clone_names()
+        self.assertEqual(slept, [5])
 
 
 class RunLabelTest(unittest.TestCase):

@@ -234,6 +234,11 @@ def review_state(pr: dict) -> str:
 _canonical: dict[str, str] = {}
 
 
+def knows_name(slug: str) -> bool:
+    """Whether some account answered canonical_slug for this slug."""
+    return slug in _canonical
+
+
 def canonical_slug(slug: str) -> str:
     """Current 'owner/name' of a repository, so a renamed repo still matches its old remote URL. Only answers
     GitHub gave are remembered; a failed lookup falls back to the slug and is tried again next time.

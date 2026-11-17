@@ -29,7 +29,7 @@ thync는 수집한 작업 정보를 로컬 화면에 제공합니다. 외부 서
 | 대상 | 읽거나 처리하는 내용 | 쓰기 범위 |
 | --- | --- | --- |
 | 로컬 파일 | 설정, 카드, 이름 변경, 위임 기록, 선택적으로 Claude Code·Codex 세션 로그 | 카드 편집·이름 변경·위임 상태 등을 `THYNC_HOME` 또는 설정한 카드 폴더에 저장합니다 |
-| GitHub | `gh`로 내 커밋·리뷰 요청·내 PR을 조회합니다. `mien_profiles`가 있으면 `mien exec`가 호출마다 `gh`에 토큰을 넘기며, thync는 토큰을 읽거나 저장하지 않습니다. 이때 mien은 그 프로필에 있는 다른 자격 증명도 함께 넘깁니다. AWS 키, Atlassian·Notion 토큰, custom 변수는 `gh`의 환경 변수로, Google OAuth 파일, SSH 키, Slack 토큰 목록은 `$TMPDIR/mien`의 임시 파일(0600)로 넘깁니다. 임시 파일은 호출이 끝날 때 mien이 지우고, 시간 초과면 thync가 SIGINT로 중단해 mien이 지우게 합니다 | 사용자가 맡긴 PR에서만 씁니다. 다른 사람의 PR에는 리뷰와 승인을, 내 PR에는 수정·push·답글·병합 등 [허용 동작](handoff.md#작업과-허용-동작)을 Concord 작업이 실행 계정으로 씁니다. `mien_profiles`가 있으면 실행 계정은 그 PR을 목록에 올린 프로필이어야 합니다 |
+| GitHub | `gh`로 내 커밋·리뷰 요청·내 PR을 조회합니다. PR 위임을 이 머신에서 실행하면, 서버가 시작할 때 `company_roots` 아래 클론마다 저장소의 현재 이름을 조회합니다(`repos/<owner>/<name>`, 저장소 이름 변경 확인). `mien_profiles`가 있으면 `mien exec`가 호출마다 `gh`에 토큰을 넘기며, thync는 토큰을 읽거나 저장하지 않습니다. 이때 mien은 그 프로필에 있는 다른 자격 증명도 함께 넘깁니다. AWS 키, Atlassian·Notion 토큰, custom 변수는 `gh`의 환경 변수로, Google OAuth 파일, SSH 키, Slack 토큰 목록은 `$TMPDIR/mien`의 임시 파일(0600)로 넘깁니다. 임시 파일은 호출이 끝날 때 mien이 지우고, 시간 초과면 thync가 SIGINT로 중단해 mien이 지우게 합니다 | 사용자가 맡긴 PR에서만 씁니다. 다른 사람의 PR에는 리뷰와 승인을, 내 PR에는 수정·push·답글·병합 등 [허용 동작](handoff.md#작업과-허용-동작)을 Concord 작업이 실행 계정으로 씁니다. `mien_profiles`가 있으면 실행 계정은 그 PR을 목록에 올린 프로필이어야 합니다 |
 | Jira | 설정한 API로 티켓을 조회합니다 | 쓰지 않습니다 |
 | Notion | 설정한 API로 페이지를 조회합니다 | 쓰지 않습니다 |
 | Obsidian | `obsidian_vaults`에 적은 폴더의 `.md` 파일을 이 컴퓨터에서 읽습니다. 본문에서는 노트 링크, 태그, Jira 키, GitHub PR 주소만 뽑고 문장은 저장하지 않습니다. `obsidian_board`에 적은 Kanban 보드 파일 하나는 예외로, 카드의 글을 읽어 칸반에 보여 줍니다 | 쓰지 않습니다. 보드 카드는 thync에서 옮기거나 고칠 수 없습니다 |
