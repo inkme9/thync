@@ -9,6 +9,8 @@ import re
 import shlex
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -99,6 +101,7 @@ class HandoffTest(unittest.TestCase):
                 mock.patch.object(reflex, "EXIT_DIR", self.exits, create=True), \
                 mock.patch("shutil.which", which or (lambda name: f"/usr/bin/{name}")):
             reflex._tmux_cache.clear()
+            reflex.github.login.cache_clear()
             return (call or reflex.start_reflex)(node)
 
     def test_review_request_starts_review_until_approve_for_that_pr_as_the_profile(self):
@@ -204,6 +207,12 @@ class HandoffTest(unittest.TestCase):
         self.assertEqual((machine.launches(), self.saved), ([], {}))
         # The account is read as the profile, never as the server's own gh account.
         self.assertTrue(all(c[:3] == ["mien", "exec", "cryptolab"] for c in machine.calls if "gh" in c))
+
+    def test_a_second_check_reuses_the_login(self):
+        machine = FakeMachine(author="alice")
+        both = self.run_handoff(pr_node("review"), machine, call=lambda n: [reflex.plan_reflex(n) for _ in range(2)])
+        self.assertEqual([status for status, _ in both], [200, 200])
+        self.assertEqual(sum("user" in c for c in machine.calls if "gh" in c), 1)  # each call is a mien call, ~2 s
 
     def test_start_refuses_when_the_check_differs_from_what_was_confirmed(self):
         same = {"url": A, "workflow": "concord:review-until-approve", "profile": "cryptolab", "login": "me", "cwd": self.clone}
@@ -344,6 +353,102 @@ class FindCloneTest(unittest.TestCase):
                 mock.patch.object(reflex, "canonical_slug") as canonical:
             self.assertEqual(reflex.find_clone("O/R", "r"), str(root / "b-target"))
         canonical.assert_not_called()  # a rename lookup is a GitHub call per clone
+
+
+class FindRenamedCloneTest(unittest.TestCase):
+    def test_a_clone_under_the_repositorys_old_name_is_found_asking_github_about_all_at_once(self):
+        root = Path(tempfile.mkdtemp())
+        names = ["a-other", "b-old-name", "c-third"]
+        for name in names:
+            (root / name / ".git").mkdir(parents=True)
+        origins = {str(root / n): f"o/{n}" for n in names}
+        current = {"o/b-old-name": "o/r", "o/r": "o/r"}
+        running, most = 0, 0
+        lock = threading.Lock()
+
+        def canonical(slug):
+            nonlocal running, most
+            with lock:
+                running += 1
+                most = max(most, running)
+            time.sleep(0.2)
+            with lock:
+                running -= 1
+            return current.get(slug, slug)
+
+        with mock.patch.object(reflex, "COMPANY_ROOTS", [str(root)]), mock.patch.object(reflex, "known_sessions", list), \
+                mock.patch.object(reflex, "origin_of", lambda path: origins[path]), \
+                mock.patch.object(reflex, "canonical_slug", canonical):
+            self.assertEqual(reflex.find_clone("o/r", "r"), str(root / "b-old-name"))
+        self.assertGreater(most, 1)  # the lookups overlapped instead of running one after another
+
+
+class CanonicalNameTest(unittest.TestCase):
+    """sources/github.canonical_slug as the clone search uses it."""
+
+    def ask(self, answers: dict):
+        """canonical_slug with gh answering per account: a name, or the stderr of a failure."""
+        self.calls = []
+
+        def gh(account, *args, **kw):
+            self.calls.append(account)
+            answer = answers[account]
+            if answer.startswith("gh:"):
+                raise subprocess.CalledProcessError(1, ["gh"], "", answer)
+            return answer + "\n"
+        return mock.patch.object(reflex.github, "gh", gh), mock.patch.object(reflex.github, "readers", lambda: list(answers))
+
+    def setUp(self):
+        reflex.github._canonical.clear()
+        reflex.github._not_found.clear()
+
+    def test_a_repository_every_account_cannot_find_is_not_asked_again_for_an_hour(self):
+        a, b = self.ask({"work": "gh: Not Found (HTTP 404)", "home": "gh: Not Found (HTTP 404)"})
+        with a, b:
+            self.assertEqual(reflex.github.canonical_slug("O/Gone"), "o/gone")
+            self.assertEqual(reflex.github.canonical_slug("O/Gone"), "o/gone")  # same case either way
+        self.assertEqual(self.calls, ["work", "home"])  # both accounts once, then nothing for an hour
+
+    def test_an_account_that_starts_reading_later_is_asked_despite_the_404s(self):
+        a, b = self.ask({"work": "gh: Not Found (HTTP 404)"})
+        with a, b:
+            self.assertEqual(reflex.github.canonical_slug("O/Old"), "o/old")
+        a, b = self.ask({"work": "gh: Not Found (HTTP 404)", "home": "O/New"})
+        with a, b:
+            self.assertEqual(reflex.github.canonical_slug("O/Old"), "o/new")  # home had not been asked
+
+    def test_a_failure_that_is_not_a_404_is_asked_again_next_time(self):
+        a, b = self.ask({"work": "gh: HTTP 504", "home": "gh: Not Found (HTTP 404)"})
+        with a, b:
+            self.assertEqual(reflex.github.canonical_slug("O/Old"), "o/old")
+        self.assertNotIn("O/Old", reflex.github._not_found)
+        a, b = self.ask({"work": "O/New", "home": "gh: Not Found (HTTP 404)"})
+        with a, b:
+            self.assertEqual(reflex.github.canonical_slug("O/Old"), "o/new")
+
+
+class LearnCloneNamesTest(unittest.TestCase):
+    def test_every_clone_under_the_roots_has_its_current_name_asked_once(self):
+        root = Path(tempfile.mkdtemp())
+        for name in ("a", "b", "plain"):
+            (root / name / ".git" if name != "plain" else root / name).mkdir(parents=True)
+        origins = {str(root / "a"): "o/a", str(root / "b"): ""}  # b is not a GitHub clone, plain is not a clone
+        with mock.patch.object(reflex, "COMPANY_ROOTS", [str(root)]), \
+                mock.patch.object(reflex, "origin_of", lambda path: origins[path]), \
+                mock.patch.object(reflex.github, "refreshed", 1.0), \
+                mock.patch.object(reflex, "canonical_slug") as canonical:
+            reflex.learn_clone_names()
+        self.assertEqual([c.args for c in canonical.call_args_list], [("o/a",)])
+
+    def test_learning_waits_for_githubs_first_read(self):
+        slept = []
+        def sleep(sec):
+            slept.append(sec)
+            reflex.github.refreshed = 1.0  # the first read finishes meanwhile
+        with mock.patch.object(reflex.github, "refreshed", 0.0), mock.patch.object(reflex, "SOURCES", {"github"}), \
+                mock.patch.object(reflex.time, "sleep", sleep), mock.patch.object(reflex, "clones_under_roots", list):
+            reflex.learn_clone_names()
+        self.assertEqual(slept, [5])
 
 
 class RunLabelTest(unittest.TestCase):

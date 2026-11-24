@@ -2,6 +2,7 @@
 import { BrainRenderer } from "../../vendor/brain-atlas/src/renderer.ts";
 import { Brain3D, spinePoint } from "../../vendor/brain-atlas/src/shape.ts";
 import type { BrainEdge, BrainGraph } from "../../vendor/brain-atlas/src/types.ts";
+import { nearLine } from "./spine.ts";
 import { state } from "./state.ts";
 
 const SPINE_HIT_PX = 34;
@@ -21,16 +22,27 @@ class ThyncRenderer extends BrainRenderer {
     if (dropped && this.nearSpine(point.x, point.y)) this.onSpineDrop(dropped);
   };
 
-  // Project the spine's center line with the same camera as render-core and measure the drop distance.
-  private nearSpine(x: number, y: number): boolean {
+  /** The spine's center line on screen, top to bottom, in canvas pixels: the same camera as render-core. */
+  spineLine(): { x: number; y: number }[] {
     const scale = Math.min(this.width, this.height) * 0.32 * this.zoom;
     const project = Brain3D.makeProjector({
       rotX: this.rot.x, rotY: this.rot.y, scale, cx: this.width / 2, cy: this.height / 2 - this.height * 0.04, dist: 3.4 });
+    const line = [];
     for (let t = 0; t <= 1.0001; t += 0.05) {
       const p = project(spinePoint(t));
-      if (Math.hypot(p.sx - x, p.sy - y) < SPINE_HIT_PX) return true;
+      line.push({ x: p.sx, y: p.sy });
     }
-    return false;
+    return line;
+  }
+
+  /** Whether a pointer (a row dragged from the side panel) is within `radius` px of the spine. */
+  nearSpineAt(event: MouseEvent, radius: number): boolean {
+    const p = this.localPoint(event);
+    return this.nearSpine(p.x, p.y, radius);
+  }
+
+  private nearSpine(x: number, y: number, radius = SPINE_HIT_PX): boolean {
+    return nearLine(this.spineLine(), x, y, radius);
   }
 
   /** Send a burst of signals from a node to its neighbors. */

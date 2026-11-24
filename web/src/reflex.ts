@@ -1,10 +1,9 @@
 // Hand a PR off to a Concord workflow (docs/design/review-handoff.md). Every entry point opens this confirmation: a
-// review-list row's 맡기기 button or the row dropped on the brain, a PR node dropped on the spine, a card dropped on
+// review-list row's 맡기기 button or the row dropped on the spine, a PR node dropped on the spine, a card dropped on
 // "맡긴 일". The machine that runs the work checks the clone, account and author and shows them here; starting
 // checks again there and refuses if anything changed.
 import { post } from "./api.ts";
 import { claimModal, closeDetail, detailBox, modalTitle } from "./detail.ts";
-import { apply } from "./main.ts";
 import { renderer } from "./renderer.ts";
 import { state } from "./state.ts";
 import { ROLE_COLOR, cut } from "./style.ts";
@@ -45,8 +44,6 @@ const rows = (pairs: [string, string][]) => {
 
 export function openReflex(id: string): void {
   const targets = reflexTargets(id);
-  state.signature = ""; // put a dragged node back in its place
-  apply();
   if (!state.data.handoff || !targets.length) {
     claimModal(state.data.handoff ? "맡길 PR 이 없어요" : "PR 을 맡길 수 없어요");
     const close = button("닫기");
@@ -67,6 +64,12 @@ export function openReflex(id: string): void {
       `${n.name} · ${n.roles.includes("review") ? "리뷰 요청" : String(n.detail.review_state ?? "보낸 리뷰")} — ${cut(String(n.detail.text ?? ""), 48)}`, i === 0)));
   const body = Object.assign(document.createElement("div"), { className: "handoff" }); // not a detail row
   const ok = button("시작", true), cancel = button("취소");
+  // While the machine checks or starts, the button spins and cannot be pressed.
+  const wait = (label: string | null) => {
+    ok.disabled = label !== null;
+    ok.classList.toggle("busy", label !== null);
+    ok.textContent = label ?? "시작";
+  };
   const row = Object.assign(document.createElement("div"), { className: "actions" });
   row.append(cancel, ok);
   const selected = () => targets.find((n) => n.id === pick.querySelector<HTMLInputElement>("input:checked")?.value) ?? targets[0];
@@ -76,7 +79,7 @@ export function openReflex(id: string): void {
   const check = async () => {
     const n = selected(), mine = ++asked;
     plan = null;
-    ok.disabled = true;
+    wait("확인 중");
     modalTitle.textContent = `${n.name} 맡기기`;
     body.replaceChildren(p("실행할 머신에서 저장소 폴더, 계정, PR 작성자를 확인하고 있어요…"));
     const res = await post("/reflex", { id: n.id, check: true }).catch(() => null);
@@ -84,6 +87,8 @@ export function openReflex(id: string): void {
     if (mine !== asked || !detailBox.contains(body)) return; // another PR was picked, or this dialog was closed
     if (!res?.ok || !reply.plan) {
       body.replaceChildren(p(String(reply.message ?? `확인하지 못했어요 (${res?.status ?? "연결 안 됨"})`)), p("시작하지 않았어요."));
+      wait(null);
+      ok.disabled = true; // nothing to start
       return;
     }
     const pl: Plan = reply.plan;
@@ -94,7 +99,7 @@ export function openReflex(id: string): void {
       ["실행 계정", `${pl.login}${pl.profile ? ` · mien 프로필 ${pl.profile}` : " · mien 프로필 없음 (서버의 gh 계정)"}`],
       ["실행 위치", `${pl.host ? `${pl.host}:` : ""}${pl.cwd}`],
     ]), p(EFFECTS[pl.workflow] ?? ""), p(COMMON));
-    ok.disabled = false;
+    wait(null);
   };
   pick.onchange = () => { void check(); };
   detailBox.replaceChildren(...(targets.length > 1 ? [pick] : []), body, row);
@@ -102,7 +107,7 @@ export function openReflex(id: string): void {
   cancel.onclick = closeDetail;
   ok.onclick = async () => {
     if (!plan) return;
-    ok.disabled = true;
+    wait("시작하는 중"); // the machine checks everything again before it starts
     const n = selected();
     const res = await post("/reflex", { id: n.id, plan }).catch(() => null);
     const { message } = res ? await res.json().catch(() => ({ message: `실패 (${res.status})` }))

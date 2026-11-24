@@ -14,9 +14,10 @@ import shutil
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from .config import COMPANY_ROOTS, HOME, STATE_DIR
+from .config import COMPANY_ROOTS, HOME, SOURCES, STATE_DIR
 from .sources.claude_code import known_sessions, repo_of
 from .sources import github
 from .sources.github import canonical_slug
@@ -123,15 +124,36 @@ def origin_of(path: str) -> str:
     return github_slug(out.stdout) if out.returncode == 0 else ""
 
 
+def clones_under_roots() -> list[str]:
+    return [str(p) for r in COMPANY_ROOTS for p in sorted(Path(r).glob("*/")) if (p / ".git").is_dir()]
+
+
+def learn_clone_names() -> None:
+    """Ask GitHub, in the background at start, for the current name of every clone's repository, so a hand-off whose
+    clone has an old name does not wait on those lookups (about 2 s each through mien; a minute or two for 30
+    clones). It waits for GitHub's first read so that every account that answered is asked."""
+    for _ in range(120):  # ten minutes at most; a check still looks names up when it needs them
+        if "github" not in SOURCES or github.refreshed:
+            break
+        time.sleep(5)
+    for origin in dict.fromkeys(o for c in clones_under_roots() if (o := origin_of(c))):
+        canonical_slug(origin)
+
+
 def find_clone(slug: str, repo: str) -> str | None:
     """A clone whose origin is exactly the PR's repository, standalone clones under the configured roots before session
     folders (which may be submodules); failing that, one whose origin is the repository's old name."""
-    candidates = [str(p) for r in COMPANY_ROOTS for p in sorted(Path(r).glob("*/")) if (p / ".git").is_dir()]
+    candidates = clones_under_roots()
     candidates += [s.cwd.split("/.claude/worktrees/")[0] for s in known_sessions() if s.cwd and repo_of(s.cwd) == repo]
     origins = {c: origin_of(c) for c in dict.fromkeys(candidates)}
-    # An exact match first; asking GitHub about every other clone's name (renames) costs seconds per clone.
+    # An exact match first; asking GitHub about every other clone's name (renames) costs a mien call, about 2 s, each.
     exact = next((c for c, o in origins.items() if o == slug.lower()), None)
-    return exact or next((c for c, o in origins.items() if o and canonical_slug(o) == canonical_slug(slug)), None)
+    if exact:
+        return exact
+    asked = list(dict.fromkeys([slug, *(o for o in origins.values() if o)]))
+    with ThreadPoolExecutor(max_workers=8) as pool:  # names learn_clone_names has not learned yet, at once
+        names = dict(zip(asked, pool.map(canonical_slug, asked)))
+    return next((c for c, o in origins.items() if o and names[o] == names[slug]), None)
 
 
 def skill_installed(skill: str) -> bool:
@@ -195,8 +217,9 @@ def plan_reflex(node: dict, listed: str | None = "") -> tuple[int, dict]:
         return 409, {"message": f"{clone} 를 맡은 mien 프로필이 없어요 (mien claim <프로필>)"}
     try:
         # As every account read: through mien without gh's own login, interrupted (not killed) on a timeout so mien
-        # removes the credential files it wrote.
-        login = github.gh(profile, "api", "user", "--jq", ".login", timeout=30).strip()
+        # removes the credential files it wrote. The login is the one GitHub's reads already learned, if any: each
+        # call through mien costs about 2 s, and the PR read below still fails when the profile's token does.
+        login = github.login(profile)
         pr = json.loads(github.gh(profile, "api", f"repos/{slug}/pulls/{number}", "--jq",
                                   "{author: .user.login, state: .state, draft: .draft}", timeout=30))
     except (subprocess.SubprocessError, OSError, ValueError) as e:
