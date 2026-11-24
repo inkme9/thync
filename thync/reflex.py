@@ -217,8 +217,9 @@ def plan_reflex(node: dict, listed: str | None = "") -> tuple[int, dict]:
         return 409, {"message": f"{clone} 를 맡은 mien 프로필이 없어요 (mien claim <프로필>)"}
     try:
         # As every account read: through mien without gh's own login, interrupted (not killed) on a timeout so mien
-        # removes the credential files it wrote.
-        login = github.gh(profile, "api", "user", "--jq", ".login", timeout=30).strip()
+        # removes the credential files it wrote. The login is the one GitHub's reads already learned, if any: each
+        # call through mien costs about 2 s, and the PR read below still fails when the profile's token does.
+        login = github.login(profile)
         pr = json.loads(github.gh(profile, "api", f"repos/{slug}/pulls/{number}", "--jq",
                                   "{author: .user.login, state: .state, draft: .draft}", timeout=30))
     except (subprocess.SubprocessError, OSError, ValueError) as e:

@@ -124,7 +124,7 @@ def my_commits() -> list[dict]:
 
 @functools.lru_cache(maxsize=8)
 def login(account: str) -> str:
-    return gh(account, "api", "user", "--jq", ".login").strip()
+    return gh(account, "api", "user", "--jq", ".login", timeout=30).strip()
 
 
 def has_github(profile: str) -> bool:

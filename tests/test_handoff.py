@@ -101,6 +101,7 @@ class HandoffTest(unittest.TestCase):
                 mock.patch.object(reflex, "EXIT_DIR", self.exits, create=True), \
                 mock.patch("shutil.which", which or (lambda name: f"/usr/bin/{name}")):
             reflex._tmux_cache.clear()
+            reflex.github.login.cache_clear()
             return (call or reflex.start_reflex)(node)
 
     def test_review_request_starts_review_until_approve_for_that_pr_as_the_profile(self):
@@ -206,6 +207,12 @@ class HandoffTest(unittest.TestCase):
         self.assertEqual((machine.launches(), self.saved), ([], {}))
         # The account is read as the profile, never as the server's own gh account.
         self.assertTrue(all(c[:3] == ["mien", "exec", "cryptolab"] for c in machine.calls if "gh" in c))
+
+    def test_a_second_check_reuses_the_login(self):
+        machine = FakeMachine(author="alice")
+        both = self.run_handoff(pr_node("review"), machine, call=lambda n: [reflex.plan_reflex(n) for _ in range(2)])
+        self.assertEqual([status for status, _ in both], [200, 200])
+        self.assertEqual(sum("user" in c for c in machine.calls if "gh" in c), 1)  # each call is a mien call, ~2 s
 
     def test_start_refuses_when_the_check_differs_from_what_was_confirmed(self):
         same = {"url": A, "workflow": "concord:review-until-approve", "profile": "cryptolab", "login": "me", "cwd": self.clone}
