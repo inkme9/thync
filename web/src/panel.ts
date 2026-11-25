@@ -34,8 +34,11 @@ export function appButton(n: ApiNode | undefined): HTMLButtonElement | null {
   const url = sessionLink(n?.detail.app_url);
   if (!url) return null;
   const app = url.startsWith("codex:") ? "Codex" : "Claude";
-  const btn = Object.assign(document.createElement("button"), { className: "info app", textContent: `${app} 앱`,
-    title: `${app} 앱에서 이 세션 열기` });
+  const btn = Object.assign(document.createElement("button"), { className: "info app", title: `${app} 앱에서 이 세션 열기` });
+  // The icon of the app this computer opens the link with; its name when the hub has no icon for it.
+  const icon = Object.assign(document.createElement("img"), { src: `/app-icon/${app.toLowerCase()}`, alt: `${app} 앱` });
+  icon.onerror = () => icon.replaceWith(`${app} 앱`);
+  btn.append(icon);
   btn.onclick = (e) => { e.stopPropagation(); location.href = url; };
   btn.ondblclick = (e) => e.stopPropagation();
   return btn;

@@ -86,3 +86,35 @@ class TailscaleUsers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AppIcon(unittest.TestCase):
+    def setUp(self):
+        server.app_icon.cache_clear()
+        self.addCleanup(server.app_icon.cache_clear)
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.httpd.shutdown)
+
+    def get(self, path: str):
+        conn = http.client.HTTPConnection("127.0.0.1", self.httpd.server_address[1], timeout=5)
+        conn.request("GET", path)
+        res = conn.getresponse()
+        out = res.status, res.getheader("Content-Type"), res.read()
+        conn.close()
+        return out
+
+    def test_icon_of_the_app_that_opens_the_link(self):
+        done = mock.Mock(returncode=0, stdout="iVBORw0K\n")  # base64 of the PNG signature
+        with mock.patch.object(server.subprocess, "run", return_value=done) as run:
+            self.assertEqual(self.get("/app-icon/codex"), (200, "image/png", b"\x89PNG\r\n"))
+            self.get("/app-icon/codex")
+        self.assertEqual(run.call_count, 1)  # drawn once
+        self.assertEqual(run.call_args.args[0][-1], "codex://threads")
+
+    def test_no_icon_is_404(self):
+        with mock.patch.object(server.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="")) as run:
+            self.assertEqual(self.get("/app-icon/claude")[0], 404)  # no app takes the link
+            self.assertEqual(self.get("/app-icon/other")[0], 404)  # not a session link; nothing runs
+        self.assertEqual(run.call_count, 1)
