@@ -56,8 +56,9 @@ function cardView(c: ApiCard): HTMLDivElement {
   }
   el.append(title, sub, note, tags);
   if (c.focus) el.prepend(infoButton(c.focus));
-  // The card's latest session when a desktop app runs it, or its Obsidian note when that is newer.
-  const app = appButton(appNodeOf(c, state.data.nodes));
+  // The card's latest session when a desktop app runs it, or its Obsidian note when that is newer. A note opens only
+  // from a page on the thync computer; elsewhere the session's button stays.
+  const app = appButton(appNodeOf(c, state.data.nodes)) ?? appButton(state.data.nodes.find((n) => n.id === c.focus));
   if (app) el.prepend(app);
   const web = webButton(c);
   if (web) el.prepend(web);
