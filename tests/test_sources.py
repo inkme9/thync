@@ -60,20 +60,23 @@ class GitHub(unittest.TestCase):
             return subprocess.CompletedProcess(cmd, 0, json.dumps({"github": None if cmd[2] == "c" else cmd[2]}), "")
 
         def run(cmd, stdin, env, timeout):
-            self.assertEqual(cmd[:2], ["mien", "exec"])
-            self.assertNotEqual(cmd[2], "c")
-            self.assertNotIn("GH_TOKEN", env)  # an inherited token never stands in for a profile's own
+            if cmd[:2] == ["mien", "exec"]:
+                self.assertEqual(cmd[3:], ["--", "printenv", "GH_TOKEN"])
+                self.assertNotEqual(cmd[2], "c")
+                self.assertNotIn("GH_TOKEN", env)  # an inherited token never stands in for a profile's own
+                return f"token-{cmd[2]}\n"
             self.assertEqual(env["GH_CONFIG_DIR"], str(github.NO_LOGIN))  # nor does gh's own login
-            if cmd[2] == "b" and fail:
+            account = env["GH_TOKEN"].removeprefix("token-")
+            if account == "b" and fail:
                 raise subprocess.CalledProcessError(1, cmd, stderr="HTTP 502")
             if "search/issues" not in cmd:
                 raise subprocess.CalledProcessError(1, cmd)  # only review requests matter here
-            urls = {"a": ["u1", "u2"], "b": ["u2", "u3"]}[cmd[2]]
+            urls = {"a": ["u1", "u2"], "b": ["u2", "u3"]}[account]
             return json.dumps({"items": [{"html_url": u} for u in urls]})
 
         fail = False
         with mock.patch.multiple(github, ACCOUNTS=["a", "b", "c"], MIEN="mien", _seen_by={}, _lists={}, _logins={},
-                                 _failing=set()), \
+                                 _failing=set(), _tokens={}), \
                 mock.patch.dict(os.environ, {"GH_TOKEN": "inherited"}), \
                 mock.patch.object(github.subprocess, "run", side_effect=whoami), \
                 mock.patch.object(github, "_run", side_effect=run), mock.patch("sys.stderr"):
@@ -84,6 +87,45 @@ class GitHub(unittest.TestCase):
             fail = True
             github._refresh_account("b", 0)
             self.assertEqual(len(github.review_requests()), 3)  # b's last list is kept
+
+    def test_a_profile_token_is_asked_of_mien_once_and_kept_in_memory(self):
+        calls, tokens = [], iter(["old\n", "new\n", "newer\n"])
+
+        def run(cmd, stdin, env, timeout):
+            calls.append(cmd)
+            if cmd[0] == "mien":
+                self.assertFalse(set(github.HARNESS_ENV) & set(env))  # else mien redacts the token it prints
+                return next(tokens)
+            if env["GH_TOKEN"] == "old" and "revoked" in cmd:
+                raise subprocess.CalledProcessError(1, cmd, stderr="HTTP 401: Bad credentials")
+            if env["GH_TOKEN"] == "newer" and "refused" in cmd:
+                raise subprocess.CalledProcessError(1, cmd, stderr="HTTP 401: Bad credentials")
+            return env["GH_TOKEN"]
+
+        def mien_calls():
+            return sum(c[0] == "mien" for c in calls)
+
+        with mock.patch.multiple(github, MIEN="mien", _tokens={}), mock.patch.object(github, "_run", side_effect=run), \
+                mock.patch.dict(os.environ, {"CLAUDECODE": "1", "MIEN_CAPTURED": ""}):
+            self.assertEqual([github.gh("a", "api", "x") for _ in range(3)], ["old"] * 3)
+            self.assertEqual(mien_calls(), 1)
+            self.assertEqual(github.gh("a", "api", "revoked"), "new")  # GitHub refused the kept token: asked again
+            self.assertEqual(mien_calls(), 2)
+            github._tokens["a"] = (time.time() - github.TOKEN_TTL_SEC - 1, "new")
+            with self.assertRaises(subprocess.CalledProcessError):
+                github.gh("a", "api", "refused")  # newer is fresh, so its own 401 is not asked about again
+            self.assertEqual(mien_calls(), 3)
+
+    def test_a_profile_without_a_github_token_fails(self):
+        def run(cmd, stdin, env, timeout):
+            self.assertEqual(cmd[0], "mien")  # gh never runs without the profile's token
+            raise subprocess.CalledProcessError(1, cmd, "", "")
+
+        with mock.patch.multiple(github, MIEN="mien", _tokens={}), mock.patch.object(github, "_run", side_effect=run):
+            with self.assertRaises(subprocess.CalledProcessError) as e:
+                github.gh("nogh", "api", "user")
+        self.assertIn("no GitHub token", e.exception.stderr)
+        self.assertNotIn("nogh", github._tokens)
 
     def test_a_review_request_is_answered_as_the_reviewer_not_the_author(self):
         lists = {"author": {"sent": [{"url": "u"}]}, "reviewer": {"reviews": [{"html_url": "u"}]}}

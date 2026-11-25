@@ -27,9 +27,6 @@ WORKFLOW = {"review": "concord:review-until-approve", "sent": "concord:pr-to-mer
 PLUGIN_CACHE = HOME / ".claude" / "plugins" / "cache"
 EXIT_DIR = STATE_DIR / "handoff"
 PR_URL = re.compile(r"https://github\.com/([\w.-]+)/([\w.-]+)/pull/(\d+)")
-# mien pipes a child's output instead of giving it the terminal when one of these says an agent harness runs it (mien's
-# CAPTURE_MARKER_VARS); the session must stay interactive even when the tmux server was started from an agent's shell.
-HARNESS_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CODEX_THREAD_ID", "COPILOT_AGENT", "MIEN_CAPTURED")
 # The session edits, commits and pushes (my PR) or runs Concord's scripts (someone else's), so it keeps auto mode;
 # it still may not read secrets.
 PERMISSIONS = ["--permission-mode", "auto", "--disallowedTools", "Read(~/.thync/**)", "Read(~/.ssh/**)",
@@ -130,8 +127,8 @@ def clones_under_roots() -> list[str]:
 
 def learn_clone_names() -> None:
     """Ask GitHub, in the background at start, for the current name of every clone's repository, so a hand-off whose
-    clone has an old name does not wait on those lookups (about 2 s each through mien; a minute or two for 30
-    clones). It waits for GitHub's first read so that every account that answered is asked."""
+    clone has an old name does not wait on those lookups (about half a second each once mien handed out the
+    account's token). It waits for GitHub's first read so that every account that answered is asked."""
     for _ in range(120):  # ten minutes at most; a check still looks names up when it needs them
         if "github" not in SOURCES or github.refreshed:
             break
@@ -146,7 +143,7 @@ def find_clone(slug: str, repo: str) -> str | None:
     candidates = clones_under_roots()
     candidates += [s.cwd.split("/.claude/worktrees/")[0] for s in known_sessions() if s.cwd and repo_of(s.cwd) == repo]
     origins = {c: origin_of(c) for c in dict.fromkeys(candidates)}
-    # An exact match first; asking GitHub about every other clone's name (renames) costs a mien call, about 2 s, each.
+    # An exact match first; asking GitHub about every other clone's name (renames) costs a gh call each.
     exact = next((c for c, o in origins.items() if o == slug.lower()), None)
     if exact:
         return exact
@@ -216,9 +213,8 @@ def plan_reflex(node: dict, listed: str | None = "") -> tuple[int, dict]:
     if shutil.which("mien") and not profile:
         return 409, {"message": f"{clone} 를 맡은 mien 프로필이 없어요 (mien claim <프로필>)"}
     try:
-        # As every account read: through mien without gh's own login, interrupted (not killed) on a timeout so mien
-        # removes the credential files it wrote. The login is the one GitHub's reads already learned, if any: each
-        # call through mien costs about 2 s, and the PR read below still fails when the profile's token does.
+        # As every account read: with the token mien hands out for the profile, without gh's own login. The login is
+        # the one GitHub's reads already learned, if any; the PR read below still fails when the profile's token does.
         login = github.login(profile)
         pr = json.loads(github.gh(profile, "api", f"repos/{slug}/pulls/{number}", "--jq",
                                   "{author: .user.login, state: .state, draft: .draft}", timeout=30))
@@ -270,7 +266,9 @@ def _start(node: dict, shown: dict | None, listed: str | None) -> tuple[int, str
     # Absolute paths: the tmux server may have been started with another PATH. mien exec drops the first `--`,
     # so its own `--` keeps the one before the prompt for claude.
     prefix = [shutil.which("mien") or "mien", "exec", plan["profile"], "--"] if plan["profile"] else []
-    unset = [a for v in HARNESS_ENV for a in ("-u", v)]
+    # mien pipes a child's output instead of giving it the terminal when an agent harness marker is set; the session
+    # must stay interactive even when the tmux server was started from an agent's shell.
+    unset = [a for v in github.HARNESS_ENV for a in ("-u", v)]
     argv = ["env", *unset, *prefix, shutil.which("claude") or "claude", *PERMISSIONS, "--", prompt_of(plan)]
     # sh, not tmux's default-shell: `$?` is the exit status only in a POSIX shell.
     script = f"{shlex.join(argv)}; echo $? > {shlex.quote(str(exit_file(record)))}"

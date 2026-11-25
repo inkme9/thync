@@ -1,9 +1,10 @@
 """GitHub through the `gh` CLI: review requests to me, my open PRs waiting on review, and my recent commits.
 
-With `mien_profiles` set, the GitHub account of every one of those mien profiles that has one is read through
-`mien exec`, in parallel, and the lists are merged. Without it, gh's active account is the only one.
+With `mien_profiles` set, the GitHub account of every one of those mien profiles that has one is read with the
+token `mien exec` hands out, in parallel, and the lists are merged. Without it, gh's active account is the only one.
 The calls take seconds, so refresh_forever() fetches in a background thread and requests only read what it left.
 """
+import collections
 import functools
 import json
 import os
@@ -26,6 +27,13 @@ MAX_BRANCHES = 20  # pushed branches whose head commit message is fetched
 _seen_by: dict[str, str] = {}  # PR url -> account that lists it now; rebuilt from _lists, never added to
 _lists: dict[str, dict[str, list]] = {}  # account -> "reviews" | "sent" | "commits" -> what GitHub last returned
 _logins: dict[str, str] = {}  # account -> my login there, lowercased
+# profile -> (when mien handed it out, its GH_TOKEN). In this process's memory only, never on disk.
+_tokens: dict[str, tuple[float, str]] = {}
+_token_locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
+TOKEN_TTL_SEC = 3600  # a token GitHub still accepts is asked of mien again after this, so a replaced one takes over
+# mien redacts secrets in what a child prints when one of these says an agent harness records it (mien's
+# CAPTURE_MARKER_VARS). The token goes to thync's pipe, not a harness, so the token read runs without them.
+HARNESS_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CODEX_THREAD_ID", "COPILOT_AGENT", "MIEN_CAPTURED")
 _failing: set[str] = set()  # "account kind" pairs whose last fetch failed, so each failure is logged once
 refreshed = 0.0  # when refresh() last finished
 FAILED = (subprocess.SubprocessError, OSError, json.JSONDecodeError, KeyError, TypeError)
@@ -42,7 +50,8 @@ SENT_QUERY = """query { search(query:"is:open is:pr author:@me archived:false", 
 
 def _run(cmd: list[str], stdin: str | None, env: dict | None, timeout: int) -> str:
     """subprocess.run(check=True) whose timeout interrupts instead of killing: mien removes the credential files it
-    wrote for the call on Ctrl-C (SIGINT), but SIGKILL leaves them behind."""
+    wrote for the call on Ctrl-C (SIGINT), but SIGKILL leaves them behind. Runs from home: mien refuses a profile in
+    a folder another profile claims."""
     with subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                           encoding="utf-8", cwd=HOME, env=env, start_new_session=True) as p:
         try:
@@ -60,18 +69,42 @@ def _run(cmd: list[str], stdin: str | None, env: dict | None, timeout: int) -> s
     return out
 
 
+def _token(profile: str, timeout: int) -> tuple[str, bool]:
+    """The profile's GitHub token and whether mien was asked for it just now. Asking costs about two seconds (mien
+    reads the profile's secrets from its backend), so a token is kept for TOKEN_TTL_SEC. Profiles are asked at
+    once, but each one only once at a time."""
+    with _token_locks[profile]:
+        at, token = _tokens.get(profile, (0.0, ""))
+        if time.time() - at < TOKEN_TTL_SEC:
+            return token, False
+        env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN", *HARNESS_ENV)}
+        cmd = [MIEN, "exec", profile, "--", "printenv", "GH_TOKEN"]
+        try:
+            token, err = _run(cmd, None, env, timeout).strip(), ""
+        except subprocess.CalledProcessError as e:
+            token, err = "", (e.stderr or "").strip()
+        if not token:  # printenv prints nothing when the profile has no GitHub token; it must fail, not borrow one
+            raise subprocess.CalledProcessError(1, cmd, "", err or f"mien profile {profile} has no GitHub token")
+        _tokens[profile] = (time.time(), token)
+        return token, True
+
+
 def gh(account: str, *args: str, stdin: str | None = None, timeout: int = 60) -> str:
-    """Run gh as one account and return its output. A profile's call goes through `mien exec`, which hands gh the
-    token in its environment; that adds about two seconds, and thync never holds the token."""
-    cmd, env = ["gh", *args], None
-    if account:
-        cmd = [MIEN, "exec", account, "--", *cmd]
-        # A profile without GitHub must fail, not borrow another account: drop the token this process inherited,
-        # and point gh away from its own logins.
-        NO_LOGIN.mkdir(parents=True, exist_ok=True)
-        env = {**{k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}, "GH_CONFIG_DIR": str(NO_LOGIN)}
-    # From home: mien refuses a profile in a folder another profile claims, such as this repository.
-    return _run(cmd, stdin, env, timeout)
+    """Run gh as one account and return its output. A profile's call hands gh only that profile's token
+    (_token), and gh's own logins are pointed away from. A token GitHub refuses (401: revoked or replaced) is
+    dropped, and asked of mien again once."""
+    if not account:
+        return _run(["gh", *args], stdin, None, timeout)
+    NO_LOGIN.mkdir(parents=True, exist_ok=True)
+    base = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
+    while True:
+        token, fresh = _token(account, timeout)
+        try:
+            return _run(["gh", *args], stdin, {**base, "GH_CONFIG_DIR": str(NO_LOGIN), "GH_TOKEN": token}, timeout)
+        except subprocess.CalledProcessError as e:
+            if fresh or "HTTP 401" not in (e.stderr or ""):
+                raise
+            _tokens.pop(account, None)
 
 
 def readers() -> list[str]:
