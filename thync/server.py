@@ -53,7 +53,7 @@ SECURITY_HEADERS = {
 }
 
 # Session links the page offers (web/src/link.ts), by the name its buttons ask for the icon of.
-APP_LINKS = {"claude": "claude://claude.ai", "codex": "codex://threads"}
+APP_LINKS = {"claude": "claude://claude.ai", "codex": "codex://threads", "obsidian": "obsidian://open"}
 # Draws, at 64 px, the icon of the app macOS opens a link with, as base64 PNG; nothing when no app takes the link.
 ICON_JXA = """ObjC.import("AppKit");
 function run(argv) {

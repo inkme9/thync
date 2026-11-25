@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { linkKind, sessionLink } from "../src/link.ts";
+import { linkKind, noteLink, sessionLink } from "../src/link.ts";
 
 test("http and https urls open as web links", () => {
   assert.equal(linkKind("https://github.com/o/r/pull/7"), "web");
@@ -31,5 +31,14 @@ test("a session link opens its app only on the machine that runs it", () => {
     "claude://claude.ai/epitaxy/local_x?q=y", "codex://threads/new?prompt=x"]) {
     assert.equal(sessionLink(url, false, "127.0.0.1"), null, String(url));
     assert.equal(sessionLink(url, true, "mini.tail1234.ts.net"), null, String(url));
+  }
+});
+
+test("an Obsidian note opens in Obsidian only from a page on the thync computer", () => {
+  const note = "obsidian://open?path=%2FUsers%2Fme%2Fvault%2Fnote.md";
+  assert.equal(noteLink(note, "127.0.0.1"), note);
+  assert.equal(noteLink(note, "mini.tail1234.ts.net"), null);
+  for (const url of ["", undefined, "obsidian://new?name=x", "obsidian://open?vault=v&file=x", "obsidian://open?path=a b"]) {
+    assert.equal(noteLink(url, "127.0.0.1"), null, String(url));
   }
 });

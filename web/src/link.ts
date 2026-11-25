@@ -11,9 +11,18 @@ const SESSION_LINK = /^(claude:\/\/claude\.ai\/epitaxy\/local_[A-Za-z0-9-]{1,64}
  *  opens it. The app of the thync computer: on a page opened there (127.0.0.1). The app of another computer that runs
  *  the session here over SSH (`elsewhere`): on a page opened from another computer (over Tailscale). */
 export function sessionLink(url: unknown, elsewhere = false, host = location.hostname): string | null {
-  const here = ["127.0.0.1", "localhost", "[::1]"].includes(host);
-  return typeof url === "string" && SESSION_LINK.test(url) && here !== elsewhere ? url : null;
+  return typeof url === "string" && SESSION_LINK.test(url) && isHere(host) !== elsewhere ? url : null;
 }
+
+const NOTE_LINK = /^obsidian:\/\/open\?path=[^\s&#]+$/;
+
+/** The link that opens an Obsidian note in the Obsidian app. The note is a file on the thync computer, so only a page
+ *  opened there gets it. */
+export function noteLink(url: unknown, host = location.hostname): string | null {
+  return typeof url === "string" && NOTE_LINK.test(url) && isHere(host) ? url : null;
+}
+
+const isHere = (host: string) => ["127.0.0.1", "localhost", "[::1]"].includes(host);
 
 export function linkKind(url: string): LinkKind {
   if (/^https?:\/\//.test(url)) return "web";

@@ -3,7 +3,7 @@
 // review lists is handed to Claude with its 맡기기 button or by dragging it onto the spine (reflex.ts).
 import { openDetail } from "./detail.ts";
 import { focus } from "./main.ts";
-import { sessionLink } from "./link.ts";
+import { noteLink, sessionLink } from "./link.ts";
 import { openReflex, runningHandoff } from "./reflex.ts";
 import { isSource, shown, state } from "./state.ts";
 import { REVIEW_STATE, ago, cut } from "./style.ts";
@@ -28,13 +28,16 @@ export function infoButton(id: string): HTMLButtonElement {
   return btn;
 }
 
-/** "Claude 앱" / "Codex 앱": opens the session in the desktop app it runs in. Null for other nodes, remote sessions,
- *  and a page opened from another machine. The browser hands the link to the app (link.ts). */
+/** "Claude 앱" / "Codex 앱" / "Obsidian 앱": opens the session in the desktop app it runs in, or the Obsidian note in
+ *  Obsidian. Null for other nodes and where the link would open an app that does not have it (link.ts). The browser
+ *  hands the link to the app. */
 export function appButton(n: ApiNode | undefined): HTMLButtonElement | null {
-  const url = sessionLink(n?.detail.app_url, Boolean(n?.detail.app_elsewhere));
+  const note = n?.kind === "dailyNote" ? noteLink(n.detail.url) : null;
+  const url = note ?? sessionLink(n?.detail.app_url, Boolean(n?.detail.app_elsewhere));
   if (!url) return null;
-  const app = url.startsWith("codex:") ? "Codex" : "Claude";
-  const btn = Object.assign(document.createElement("button"), { className: "info app", title: `${app} 앱에서 이 세션 열기` });
+  const app = note ? "Obsidian" : url.startsWith("codex:") ? "Codex" : "Claude";
+  const btn = Object.assign(document.createElement("button"), { className: "info app",
+    title: `${app} 앱에서 이 ${note ? "노트" : "세션"} 열기` });
   // The icon of the app this computer opens the link with; its name when the hub has no icon for it.
   const icon = Object.assign(document.createElement("img"), { src: `/app-icon/${app.toLowerCase()}`, alt: `${app} 앱` });
   icon.onerror = () => icon.replaceWith(`${app} 앱`);
