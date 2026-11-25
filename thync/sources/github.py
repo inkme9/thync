@@ -4,6 +4,7 @@ With `mien_profiles` set, the GitHub account of every one of those mien profiles
 token `mien exec` hands out, in parallel, and the lists are merged. Without it, gh's active account is the only one.
 The calls take seconds, so refresh_forever() fetches in a background thread and requests only read what it left.
 """
+import copy
 import functools
 import json
 import os
@@ -84,7 +85,7 @@ def _token(profile: str, timeout: float) -> tuple[str, bool]:
     reads the profile's secrets from its backend), so a token is kept for TOKEN_TTL_SEC. Profiles are asked at
     once, but each one only once at a time. A failure is answered for TOKEN_FAILED_SEC without asking again, so
     threads waiting on a profile mien cannot serve do not each spend a mien call in turn."""
-    cmd = [MIEN, "exec", profile, "--", "printenv", "GH_TOKEN"]
+    cmd, end = [MIEN, "exec", profile, "--", "printenv", "GH_TOKEN"], time.monotonic() + timeout
     lock = _token_locks.setdefault(profile, threading.Lock())
     if not lock.acquire(timeout=timeout):  # another thread is asking mien for it
         raise subprocess.TimeoutExpired(cmd, timeout)
@@ -94,12 +95,13 @@ def _token(profile: str, timeout: float) -> tuple[str, bool]:
             return token, False
         failed_at, failure = _token_failed.get(profile, (0.0, None))
         if failure and time.time() - failed_at < TOKEN_FAILED_SEC:
-            raise failure
+            raise copy.copy(failure)  # a copy: threads raising one object would pile their frames onto it
         # mien hides secrets in a child's output when an agent harness marker is set, so this one call runs
         # without them (docs/security.md says what else that turns off).
         env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN", *HARNESS_ENV)}
+        left = _left(end, cmd)  # out here: the caller's spent budget is not mien failing
         try:
-            token, err = _run(cmd, None, env, timeout).strip(), ""
+            token, err = _run(cmd, None, env, left).strip(), ""
             if not token:  # printenv prints nothing when the profile has no GitHub token: fail, never borrow one
                 err = f"mien profile {profile} has no GitHub token"
         except subprocess.CalledProcessError as e:
@@ -109,7 +111,7 @@ def _token(profile: str, timeout: float) -> tuple[str, bool]:
             raise
         if not token:
             _token_failed[profile] = (time.time(), subprocess.CalledProcessError(1, cmd, "", err))
-            raise _token_failed[profile][1]
+            raise copy.copy(_token_failed[profile][1])
         _token_failed.pop(profile, None)
         _tokens[profile] = (time.time(), token)
         return token, True
