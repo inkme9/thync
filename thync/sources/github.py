@@ -1,9 +1,10 @@
 """GitHub through the `gh` CLI: review requests to me, my open PRs waiting on review, and my recent commits.
 
-With `mien_profiles` set, the GitHub account of every one of those mien profiles that has one is read through
-`mien exec`, in parallel, and the lists are merged. Without it, gh's active account is the only one.
+With `mien_profiles` set, the GitHub account of every one of those mien profiles that has one is read with the
+token `mien exec` hands out, in parallel, and the lists are merged. Without it, gh's active account is the only one.
 The calls take seconds, so refresh_forever() fetches in a background thread and requests only read what it left.
 """
+import copy
 import functools
 import json
 import os
@@ -26,6 +27,15 @@ MAX_BRANCHES = 20  # pushed branches whose head commit message is fetched
 _seen_by: dict[str, str] = {}  # PR url -> account that lists it now; rebuilt from _lists, never added to
 _lists: dict[str, dict[str, list]] = {}  # account -> "reviews" | "sent" | "commits" -> what GitHub last returned
 _logins: dict[str, str] = {}  # account -> my login there, lowercased
+# profile -> (when mien handed it out, its GH_TOKEN). In this process's memory only, never on disk.
+_tokens: dict[str, tuple[float, str]] = {}
+_token_locks: dict[str, threading.Lock] = {}  # profile -> lock; dict.setdefault is atomic, also without the GIL
+_token_failed: dict[str, tuple[float, Exception]] = {}  # profile -> when mien last failed to hand out a token, and how
+TOKEN_TTL_SEC = 3600  # a token GitHub still accepts is asked of mien again after this, so a replaced one takes over
+TOKEN_FAILED_SEC = 60  # how long such a failure is answered without asking mien again
+# mien redacts secrets in what a child prints when one of these says an agent harness records it (mien's
+# CAPTURE_MARKER_VARS). The token goes to thync's pipe, not a harness, so the token read runs without them.
+HARNESS_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CODEX_THREAD_ID", "COPILOT_AGENT", "MIEN_CAPTURED")
 _failing: set[str] = set()  # "account kind" pairs whose last fetch failed, so each failure is logged once
 refreshed = 0.0  # when refresh() last finished
 FAILED = (subprocess.SubprocessError, OSError, json.JSONDecodeError, KeyError, TypeError)
@@ -42,7 +52,8 @@ SENT_QUERY = """query { search(query:"is:open is:pr author:@me archived:false", 
 
 def _run(cmd: list[str], stdin: str | None, env: dict | None, timeout: int) -> str:
     """subprocess.run(check=True) whose timeout interrupts instead of killing: mien removes the credential files it
-    wrote for the call on Ctrl-C (SIGINT), but SIGKILL leaves them behind."""
+    wrote for the call on Ctrl-C (SIGINT), but SIGKILL leaves them behind. Runs from home: mien refuses a profile in
+    a folder another profile claims."""
     with subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                           encoding="utf-8", cwd=HOME, env=env, start_new_session=True) as p:
         try:
@@ -60,18 +71,85 @@ def _run(cmd: list[str], stdin: str | None, env: dict | None, timeout: int) -> s
     return out
 
 
-def gh(account: str, *args: str, stdin: str | None = None, timeout: int = 60) -> str:
-    """Run gh as one account and return its output. A profile's call goes through `mien exec`, which hands gh the
-    token in its environment; that adds about two seconds, and thync never holds the token."""
-    cmd, env = ["gh", *args], None
-    if account:
-        cmd = [MIEN, "exec", account, "--", *cmd]
-        # A profile without GitHub must fail, not borrow another account: drop the token this process inherited,
-        # and point gh away from its own logins.
-        NO_LOGIN.mkdir(parents=True, exist_ok=True)
-        env = {**{k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}, "GH_CONFIG_DIR": str(NO_LOGIN)}
-    # From home: mien refuses a profile in a folder another profile claims, such as this repository.
-    return _run(cmd, stdin, env, timeout)
+def _left(end: float, cmd: list[str]) -> float:
+    """Seconds left until `end`: the waits, the mien call and the gh call of one gh() share the caller's timeout.
+    A step that times out still gets _run's 10 s for mien to clean up after SIGINT."""
+    left = end - time.monotonic()
+    if left <= 0:
+        raise subprocess.TimeoutExpired(cmd, 0)
+    return left
+
+
+def _token(profile: str, timeout: float) -> tuple[str, bool]:
+    """The profile's GitHub token and whether mien was asked for it just now. Asking costs about two seconds (mien
+    reads the profile's secrets from its backend), so a token is kept for TOKEN_TTL_SEC. Profiles are asked at
+    once, but each one only once at a time. A failure is answered for TOKEN_FAILED_SEC without asking again, so
+    threads waiting on a profile mien cannot serve do not each spend a mien call in turn."""
+    cmd, end = [MIEN, "exec", profile, "--", "printenv", "GH_TOKEN"], time.monotonic() + timeout
+    lock = _token_locks.setdefault(profile, threading.Lock())
+    if not lock.acquire(timeout=timeout):  # another thread is asking mien for it
+        raise subprocess.TimeoutExpired(cmd, timeout)
+    try:
+        at, token = _tokens.get(profile, (0.0, ""))
+        if time.time() - at < TOKEN_TTL_SEC:
+            return token, False
+        failed_at, failure = _token_failed.get(profile, (0.0, None))
+        if failure and time.time() - failed_at < TOKEN_FAILED_SEC:
+            raise copy.copy(failure)  # a copy: threads raising one object would pile their frames onto it
+        # mien hides secrets in a child's output when an agent harness marker is set, so this one call runs
+        # without them (docs/security.md says what else that turns off).
+        env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN", *HARNESS_ENV)}
+        left = _left(end, cmd)  # out here: the caller's spent budget is not mien failing
+        try:
+            token, err = _run(cmd, None, env, left).strip(), ""
+            if not token:  # printenv prints nothing when the profile has no GitHub token: fail, never borrow one
+                err = f"mien profile {profile} has no GitHub token"
+        except subprocess.CalledProcessError as e:
+            token, err = "", (e.stderr or "").strip() or f"mien profile {profile} has no GitHub token"
+        except (subprocess.TimeoutExpired, OSError) as e:
+            _token_failed[profile] = (time.time(), e)
+            raise
+        if not token:
+            _token_failed[profile] = (time.time(), subprocess.CalledProcessError(1, cmd, "", err))
+            raise copy.copy(_token_failed[profile][1])
+        _token_failed.pop(profile, None)
+        _tokens[profile] = (time.time(), token)
+        return token, True
+    finally:
+        lock.release()
+
+
+def _drop(profile: str, token: str, timeout: float) -> None:
+    """Forget a token GitHub refused, unless another thread has already replaced it."""
+    lock = _token_locks.setdefault(profile, threading.Lock())
+    if not lock.acquire(timeout=timeout):  # another thread is asking mien for a new one
+        raise subprocess.TimeoutExpired([MIEN, "exec", profile], timeout)
+    try:
+        if _tokens.get(profile, (0.0, ""))[1] == token:
+            del _tokens[profile]
+    finally:
+        lock.release()
+
+
+def gh(account: str, *args: str, stdin: str | None = None, timeout: float = 60) -> str:
+    """Run gh as one account and return its output. A profile's call hands gh only that profile's token
+    (_token), and gh's own logins are pointed away from. A token GitHub refuses (401: revoked or replaced) is
+    dropped; one that was kept, not just handed out, is asked of mien again once."""
+    if not account:
+        return _run(["gh", *args], stdin, None, timeout)
+    NO_LOGIN.mkdir(parents=True, exist_ok=True)
+    base = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
+    cmd, end = ["gh", *args], time.monotonic() + timeout
+    for retry in (False, True):
+        token, fresh = _token(account, _left(end, cmd))
+        try:
+            return _run(cmd, stdin, {**base, "GH_CONFIG_DIR": str(NO_LOGIN), "GH_TOKEN": token}, _left(end, cmd))
+        except subprocess.CalledProcessError as e:
+            if "HTTP 401" not in (e.stderr or ""):
+                raise
+            _drop(account, token, _left(end, cmd))
+            if fresh or retry:
+                raise
 
 
 def readers() -> list[str]:
@@ -233,7 +311,7 @@ def review_state(pr: dict) -> str:
 
 _canonical: dict[str, str] = {}
 _not_found: dict[str, tuple[float, frozenset]] = {}  # slug -> (when, the accounts that all answered 404)
-NOT_FOUND_SEC = 3600  # how long such a slug is not asked again (each try costs a mien call per account)
+NOT_FOUND_SEC = 3600  # how long such a slug is not asked again (each try costs a gh call per account)
 
 
 def canonical_slug(slug: str) -> str:
