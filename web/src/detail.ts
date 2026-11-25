@@ -63,7 +63,7 @@ function nameField(label: string, id: string, current: string, auto: string, isC
 // A link opens one tab per URL: clicking it again brings that tab forward instead of opening another.
 // ponytail: only tabs opened since this page loaded are remembered; after a reload the named window is reused instead.
 const openedTabs = new Map<string, Window>();
-function openOnce(url: string): void {
+export function openOnce(url: string): void {
   const prev = openedTabs.get(url);
   if (prev && !prev.closed) { prev.focus(); return; }
   const w = window.open(url, `thync:${url}`);
