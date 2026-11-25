@@ -73,14 +73,24 @@ fn status() -> Result<serde_json::Value, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Hands an obsidian:// link (a note, the Kanban board) to Obsidian, which the webview cannot open by itself.
-/// Returns whether it was one.
-fn open_in_obsidian(url: &tauri::Url) -> bool {
-    if url.scheme() != "obsidian" {
+/// The link that opens one session in the Claude or Codex desktop app (thync/sources/claude_code.py app_links,
+/// codex.py). Only these exact shapes, so the hub cannot make an app do anything else, such as import a session.
+fn is_session_link(url: &str) -> bool {
+    let id = |s: &str, extra: fn(char) -> bool| !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-' || extra(c));
+    if let Some(rest) = url.strip_prefix("claude://claude.ai/epitaxy/local_") {
+        return id(rest, |c| c.is_ascii_alphanumeric());
+    }
+    url.strip_prefix("codex://threads/").is_some_and(|rest| id(rest, |_| false))
+}
+
+/// Hands a link the webview cannot open by itself to its app: obsidian:// (a note, the Kanban board) to Obsidian,
+/// a session link to the Claude or Codex app. Returns whether it was one.
+fn open_in_app(url: &str) -> bool {
+    if !url.starts_with("obsidian:") && !is_session_link(url) {
         return false;
     }
     let _ = Command::new("/usr/bin/open")
-        .arg(url.as_str())
+        .arg(url)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -96,8 +106,8 @@ fn show_main(app: &AppHandle) -> Result<(), String> {
     let w = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
         .title("thync")
         .inner_size(1400.0, 900.0)
-        // An obsidian:// link navigates this window (a note's link in the detail panel); keep the page, open Obsidian.
-        .on_navigation(|url| !open_in_obsidian(url))
+        // An obsidian:// or session link navigates this window (a note's link, a card's app button); keep the page.
+        .on_navigation(|url| !open_in_app(url.as_str()))
         .build()
         .map_err(|e| e.to_string())?;
     w.set_focus().map_err(|e| e.to_string())
@@ -106,6 +116,16 @@ fn show_main(app: &AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn open_thync(app: AppHandle) -> Result<(), String> {
     show_main(&app)
+}
+
+/// The cloud's click on a finished run or a question: the session in its desktop app.
+#[tauri::command]
+fn open_session(url: String) -> Result<(), String> {
+    if is_session_link(&url) && open_in_app(&url) {
+        Ok(())
+    } else {
+        Err("세션 링크가 아니에요".into())
+    }
 }
 
 /// A macOS notification and a short sound, for a question waiting on me or a long run that just ended.
@@ -146,7 +166,7 @@ fn start_hub() -> Result<(), String> {
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![status, open_thync, notify, start_hub])
+        .invoke_handler(tauri::generate_handler![status, open_thync, open_session, notify, start_hub])
         .setup(|app| {
             // Lives in the menu bar, not the Dock.
             #[cfg(target_os = "macos")]
@@ -192,7 +212,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::port_of;
+    use super::{is_session_link, port_of};
     use serde_json::json;
 
     #[test]
@@ -206,5 +226,17 @@ mod tests {
         assert_eq!(port_of(Some(&json!({"port": [8766]}))), None);
         assert_eq!(port_of(Some(&json!({"port": null}))), None);
         assert_eq!(port_of(Some(&json!([]))), None);
+    }
+
+    #[test]
+    fn only_session_links_open_an_app() {
+        assert!(is_session_link("claude://claude.ai/epitaxy/local_5e3ac12e-73cb-42ab-95a3-46b66077e992"));
+        assert!(!is_session_link("claude://resume?session=52d04f3e-af3f-4277-b3ee-366ce2e30eeb"));
+        assert!(is_session_link("codex://threads/01a1a896-b8b6-7a73-a3b8-0cc8e38e7278"));
+        assert!(!is_session_link("claude://claude.ai/epitaxy/local_"));
+        assert!(!is_session_link("claude://claude.ai/epitaxy/local_x?q=rm"));
+        assert!(!is_session_link("codex://threads/new?prompt=rm"));
+        assert!(!is_session_link("claude://code/new?q=hi"));
+        assert!(!is_session_link("file:///etc/passwd"));
     }
 }

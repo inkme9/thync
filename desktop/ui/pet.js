@@ -5,7 +5,8 @@
 //   focus    I am working: calm cyan glow
 //   idle     nothing going on: shades on, slow drift
 //   offline  the hub does not answer: grey, sinks, dozes; it starts the hub once
-// Click opens thync (and its answer window when a question waits); drag moves it; hovering stops it.
+// Click opens the session in its desktop app (Claude, Codex) for a finished run or a question thync cannot answer,
+// and thync otherwise (with its answer window when a question waits); drag moves it; hovering stops it.
 const { invoke } = window.__TAURI__.core;
 const tw = window.__TAURI__.window;
 const dpi = window.__TAURI__.dpi || tw;
@@ -44,7 +45,7 @@ let blinkAt = performance.now() + 2500;
 
 // A run counts as finished when a session goes from working to its turn ended. Short interactive turns end every
 // minute or so, so only background runs or runs that worked for LONG_RUN_MS without a break are announced.
-const LONG_RUN_MS = 2 * 60 * 1000, DONE_MS = 6000;
+const LONG_RUN_MS = 2 * 60 * 1000, DONE_MS = 20000;
 let working = new Map();    // session -> { since, background } while Claude works on it
 let done = null;            // { session: last finished, more: how many others finished with it, until }
 
@@ -330,11 +331,12 @@ function drawBubble() {
   let lines = null;
   if (mood === "waiting") {
     const w = status.waiting[0];
-    lines = [`? ${w.host || "이 Mac"} · ${w.title}`, w.question, w.answerable ? "눌러서 답하기" : "세션에서 답해 주세요"];
+    lines = [`? ${w.host || "이 Mac"} · ${w.title}`, w.question,
+      w.answerable ? "눌러서 답하기" : w.app_url ? `눌러서 ${appName(w.app_url)} 앱에서 답하기` : "세션에서 답해 주세요"];
   } else if (mood === "done") {
     const s = done.session;
     lines = [`✓ ${s.host || "이 Mac"} · ${s.title}`, done.more ? `외 ${done.more}개도 끝났어요` : "Claude 가 일을 마쳤어요",
-      "눌러서 thync 열기"];
+      s.app_url ? `눌러서 ${appName(s.app_url)} 앱에서 열기` : "눌러서 thync 열기"];
   } else if (hovered) {
     lines = mood === "offline" ? ["thync 허브에 연결하지 못했어요", ...(statusError ? [statusError] : []), "메뉴 막대에서 켤 수 있어요"]
       : [`집중 ${status.focus} · Claude 작업 ${status.working} · 리뷰 ${status.reviews}`,
@@ -353,6 +355,15 @@ function drawBubble() {
     ctx.font = i === 0 ? "600 12px -apple-system, sans-serif" : "12px -apple-system, sans-serif";
     ctx.fillText(l, 16, 22 + i * 16);
   });
+}
+
+const appName = (url) => (url.startsWith("codex:") ? "Codex" : "Claude");
+
+// Where a click goes: the session in its app for what the bubble shows, if that app runs it; otherwise thync.
+function clickTarget() {
+  if (mood === "waiting" && !status.waiting[0].answerable) return status.waiting[0].app_url || "";
+  if (mood === "done") return done.session.app_url || "";
+  return "";
 }
 
 function cut(text, max) {
@@ -396,7 +407,11 @@ canvas.addEventListener("pointermove", async (e) => {
   }
 });
 canvas.addEventListener("pointerup", () => {
-  if (down) invoke("open_thync").catch(() => {});
+  if (down) {
+    const url = clickTarget();
+    invoke(url ? "open_session" : "open_thync", url ? { url } : {}).catch(() => {});
+    if (url && mood === "done") { done.until = 0; mood = currentMood(); target = null; }  // seen: the cloud moves on
+  }
   down = null;
 });
 

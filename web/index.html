@@ -125,9 +125,10 @@
       background: rgba(255, 207, 107, .08); }
     button.info:focus-visible { outline: 1px solid var(--glow); outline-offset: 2px; }
     .card { position: relative; padding-right: 64px; }
-    button.info.hand { right: 78px; }
+    button.info.hand, button.info.app { right: 78px; }
     button.info.hand.running, button.info.hand.running:hover { color: var(--quiet) !important; border-color: var(--line) !important; cursor: default; }
     li:has(button.hand) { padding-right: 150px; }
+    li:has(button.app), .card:has(button.app) { padding-right: 168px; }
     li[draggable="true"] { cursor: grab; }
     #detail div.handoff { display: block; border-top: 0; padding: 0; }
     #spine-target { position: absolute; display: none; pointer-events: none; overflow: visible; }

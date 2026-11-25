@@ -136,6 +136,12 @@ class CodexPrompts(unittest.TestCase):
             self.assertIsNotNone(_load_one(self.write([meta(source), user(ts(50), "do x")]), NOW, 7 * 86400,
                                            CodexSession), source)
 
+    def test_only_a_codex_desktop_thread_links_to_the_app(self):
+        app = {"type": "session_meta", "timestamp": ts(100), "payload": {
+            "id": "01a1a896-b8b6-7a73-a3b8-0cc8e38e7278", "cwd": "/w", "source": "vscode", "originator": "Codex Desktop"}}
+        self.assertEqual(self.read([app, user(ts(50), "x")]).app_url, "codex://threads/01a1a896-b8b6-7a73-a3b8-0cc8e38e7278")
+        self.assertEqual(self.read([meta(), user(ts(50), "x")]).app_url, "")  # the CLI
+
     def test_a_fork_keeps_its_own_session_meta(self):  # criterion 7: a subagent log copies its parent's meta
         parent = {"type": "session_meta", "timestamp": ts(90), "payload": {
             "id": "parent", "cwd": "/w/other", "source": "vscode", "thread_source": "user"}}

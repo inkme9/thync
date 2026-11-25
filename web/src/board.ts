@@ -4,7 +4,7 @@
 import { droppable, editable, opens } from "./card.ts";
 import { post } from "./api.ts";
 import { focus, refresh } from "./main.ts";
-import { infoButton } from "./panel.ts";
+import { appButton, infoButton } from "./panel.ts";
 import { openReflex, reflexTargets } from "./reflex.ts";
 import { showWaiting } from "./waiting.ts";
 import { inProfile, recall, remember, state } from "./state.ts";
@@ -39,6 +39,9 @@ function cardView(c: ApiCard): HTMLDivElement {
   }
   el.append(title, sub, note, tags);
   if (c.focus) el.prepend(infoButton(c.focus));
+  // The card's latest session, when a desktop app runs it.
+  const app = c.focus ? appButton(state.data.nodes.find((n) => n.id === c.focus)) : null;
+  if (app) el.prepend(app);
   el.onclick = (e) => {
     const url = opens(c);
     if (url) {  // the browser hands it to Obsidian; the page stays. e.detail: the second click of a double click

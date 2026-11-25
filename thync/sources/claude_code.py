@@ -9,7 +9,7 @@ import threading
 from collections import deque
 from pathlib import Path
 
-from ..config import CLAUDE_LOGS, CODEX_LOGS, HOME, SOURCES
+from ..config import CLAUDE_APP_SESSIONS, CLAUDE_LOGS, CODEX_LOGS, HOME, SOURCES
 from ..util import epoch
 
 FILE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
@@ -53,6 +53,7 @@ class Session:
         self.files: dict[str, str] = {}
         self.events: deque = deque(maxlen=40)
         self.claude_turn = False
+        self.app_url = ""  # the link that opens the session in the desktop app that runs it (codex.py; app_links)
         self.waiting: dict | None = None  # a question put to me and not answered yet: {id, at, tool, questions}
         # Time of the last prompt or reply. The file mtime is not enough: the app appends metadata to old logs.
         self.last_at = ""
@@ -170,6 +171,40 @@ def _load_one(path: Path, now: float, window: float, cls=Session) -> tuple[Sessi
     subs = sum(1 for p in sub.glob("*.jsonl") if now - p.stat().st_mtime < 120) if sub.is_dir() else 0
     last = epoch(s.last_at)
     return (s, last, subs) if s.prompts and now - last <= window else None
+
+
+_app_records: dict[str, tuple[float, str, str]] = {}  # record path -> (mtime, CLI session id, app session id)
+
+
+def app_links() -> dict[str, str]:
+    """CLI session id -> the link that opens it in the Claude desktop app on this computer, for each Code session the
+    app has and has not archived; a session the app drives over SSH from this computer counts too.
+
+    The app's own link goes to a session it has and does nothing else. Its claude://resume link would import a
+    session it does not have as a new one, so a session gets a link only from the app's record of it."""
+    with _lock:  # request threads share the record cache
+        return _app_links()
+
+
+def _app_links() -> dict[str, str]:
+    seen, out = set(), {}
+    for path in CLAUDE_APP_SESSIONS.glob("*/*/local_*.json"):
+        key = str(path)
+        seen.add(key)
+        try:
+            mtime = path.stat().st_mtime
+            if _app_records.get(key, (None,))[0] != mtime:
+                d = json.loads(path.read_text(encoding="utf-8"))
+                live = not d.get("isArchived") and isinstance(d.get("cliSessionId"), str)
+                _app_records[key] = (mtime, d["cliSessionId"] if live else "", str(d.get("sessionId") or path.stem))
+        except (OSError, ValueError, KeyError, AttributeError):
+            continue
+        _, cli, sid = _app_records[key]
+        if cli and re.fullmatch(r"local_[A-Za-z0-9-]{1,64}", sid):
+            out[cli] = f"claude://claude.ai/epitaxy/{sid}"
+    for key in set(_app_records) - seen:  # a record the app deleted
+        del _app_records[key]
+    return out
 
 
 def known_sessions() -> list[Session]:
