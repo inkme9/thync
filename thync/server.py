@@ -52,7 +52,7 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
 }
 
-# Session links the page offers (web/src/link.ts), by the name its buttons ask for the icon of.
+# App links the page offers (web/src/link.ts: sessions, Obsidian notes), by the name its buttons ask for the icon of.
 APP_LINKS = {"claude": "claude://claude.ai", "codex": "codex://threads", "obsidian": "obsidian://open"}
 # Draws, at 64 px, the icon of the app macOS opens a link with, as base64 PNG; nothing when no app takes the link.
 ICON_JXA = """ObjC.import("AppKit");
@@ -71,7 +71,7 @@ function run(argv) {
 
 @functools.cache
 def app_icon(name: str) -> bytes:
-    """PNG icon of the app this computer opens `name`'s session links with; empty when there is none.
+    """PNG icon of the app this computer opens `name`'s links with; empty when there is none.
 
     It is the icon macOS shows for that app, so the button looks like what it opens. Kept until the hub restarts.
     """

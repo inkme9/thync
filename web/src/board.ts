@@ -1,10 +1,9 @@
 // The kanban board under the brain. Cards are dragged between columns (a hand-set column wins over the
 // automatic one) and edited in place: double-click a title or a note. Each card is a Markdown file on the
 // server. Also here: view modes (brain + board / brain / board), the resize handle, and "+ 카드".
-import { droppable, editable, opens } from "./card.ts";
+import { appNodeOf, droppable, editable, opens, prLink } from "./card.ts";
 import { post } from "./api.ts";
 import { openOnce } from "./detail.ts";
-import { linkKind } from "./link.ts";
 import { focus, refresh } from "./main.ts";
 import { appButton, infoButton } from "./panel.ts";
 import { openReflex, reflexTargets } from "./reflex.ts";
@@ -25,9 +24,11 @@ const GLOBE = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" strok
 
 /** A button that opens the card's PR on GitHub, for the card of a review request, my PR or a hand-off. */
 function webButton(c: ApiCard): HTMLButtonElement | null {
-  const url = c.id.replace(/^(pr|reflex):/, "");
-  if (url === c.id || linkKind(url) !== "web") return null;
-  const btn = Object.assign(document.createElement("button"), { className: "info web", innerHTML: GLOBE, title: "브라우저에서 PR 열기" });
+  const url = prLink(c);
+  if (!url) return null;
+  // A hand-off card whose PR and session are gone has no 상세 button; the globe then takes its place.
+  const btn = Object.assign(document.createElement("button"), { className: c.focus ? "info web" : "info web alone", innerHTML: GLOBE,
+    title: "브라우저에서 PR 열기" });
   btn.setAttribute("aria-label", "브라우저에서 PR 열기");
   btn.onclick = (e) => { e.stopPropagation(); openOnce(url); };
   btn.ondblclick = (e) => e.stopPropagation();
@@ -55,8 +56,8 @@ function cardView(c: ApiCard): HTMLDivElement {
   }
   el.append(title, sub, note, tags);
   if (c.focus) el.prepend(infoButton(c.focus));
-  // The card's latest session, when a desktop app runs it.
-  const app = c.focus ? appButton(state.data.nodes.find((n) => n.id === c.focus)) : null;
+  // The card's latest session when a desktop app runs it, or its Obsidian note when that is newer.
+  const app = appButton(appNodeOf(c, state.data.nodes));
   if (app) el.prepend(app);
   const web = webButton(c);
   if (web) el.prepend(web);
