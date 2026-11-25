@@ -357,7 +357,7 @@ def status_of(g: dict) -> dict:
     nodes = g["nodes"]
     waiting = [{"session": n["id"], "title": n["name"], "host": n["detail"].get("host", ""),
                 "question": (n["detail"]["waiting"].get("questions") or [{}])[0].get("question", ""),
-                "answerable": bool(n["detail"]["waiting"].get("answerable"))}
+                "answerable": bool(n["detail"]["waiting"].get("answerable")), "app_url": n["detail"].get("app_url", "")}
                for n in nodes if n["kind"] == "workThread" and n["detail"].get("waiting")]
     return {"generated": g["generated"], "waiting": waiting,
             "running": sum(1 for n in nodes if n["kind"] == "workThread" and "running" in n["roles"]),
@@ -374,7 +374,7 @@ def session_state(n: dict) -> dict:
     state = ("waiting" if d.get("waiting") else "working" if d.get("claude_working")
              else "ended" if d.get("turn_ended") else "stalled")  # stalled: Claude's turn, but the log went quiet
     return {"session": n["id"], "title": n["name"], "host": d.get("host", ""), "state": state,
-            "background": "running" in n["roles"]}
+            "background": "running" in n["roles"], "app_url": d.get("app_url", "")}
 
 
 # An app started from the macOS GUI has no /usr/local/bin on PATH, so the app bundle's CLI is the fallback.

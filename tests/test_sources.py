@@ -7,12 +7,13 @@ import tempfile
 import time
 import unittest
 import urllib.parse
+from pathlib import Path
 from unittest import mock
 
 os.environ["THYNC_HOME"] = tempfile.mkdtemp()
 
 from thync import graph  # noqa: E402
-from thync.sources import github, jira, notion  # noqa: E402
+from thync.sources import claude_code, github, jira, notion  # noqa: E402
 
 
 def reply(body) -> io.BytesIO:
@@ -295,6 +296,23 @@ class GraphWithoutSessions(unittest.TestCase):
         # Sessions describe the work; commits would only add a unit per branch and merge commit.
         self.assertFalse(any(n["id"] == "branch:r:feat" for n in g["nodes"]))
         self.assertFalse(any(u["id"] == "branch:r:feat" for u in g["units"]))
+
+
+class AppLink(unittest.TestCase):
+    def record(self, root: Path, sid: str, cli: str, archived=False) -> None:
+        path = root / "acct" / "org" / f"{sid}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"sessionId": sid, "cliSessionId": cli, "isArchived": archived}))
+
+    def test_a_session_links_only_through_the_claude_apps_own_record(self):
+        root = Path(tempfile.mkdtemp())
+        self.record(root, "local_5e3ac12e-73cb-42ab-95a3-46b66077e992", "52d04f3e-af3f-4277-b3ee-366ce2e30eeb")
+        self.record(root, "local_old", "0ld", archived=True)
+        with mock.patch.object(claude_code, "CLAUDE_APP_SESSIONS", root):
+            self.assertEqual(claude_code.app_links(), {
+                "52d04f3e-af3f-4277-b3ee-366ce2e30eeb": "claude://claude.ai/epitaxy/local_5e3ac12e-73cb-42ab-95a3-46b66077e992"})
+            (root / "acct" / "org" / "local_5e3ac12e-73cb-42ab-95a3-46b66077e992.json").unlink()
+            self.assertEqual(claude_code.app_links(), {})  # a terminal session, or one the app let go of
 
 
 class EpochTest(unittest.TestCase):

@@ -60,6 +60,8 @@ class CodexSession(Session):
                 self.id = p.get("id") or self.id
                 self.cwd = p.get("cwd") or ""
                 self.branch = (p.get("git") or {}).get("branch") or ""
+                # The Codex app opens a thread it started; a thread from the CLI is left alone.
+                self.app_url = f"codex://threads/{self.id}" if p.get("originator") == "Codex Desktop" else ""
             return
         if self.spawned:
             return

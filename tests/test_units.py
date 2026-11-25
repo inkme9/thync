@@ -18,7 +18,7 @@ def iso(ago: float) -> str:
 def session(sid: str, branch: str, title: str, prs: dict, ago: float = 60):
     return SimpleNamespace(id=sid, source="claude_code", cwd="/home/me/work/app", branch=branch, title=title,
                            ai_title="", prompts=[(iso(ago), title)], prs=prs, files={}, events=[],
-                           claude_turn=False, waiting=None, last_at=iso(ago), ago=ago)
+                           claude_turn=False, waiting=None, last_at=iso(ago), ago=ago, app_url="")
 
 
 PR = "https://github.com/o/app/pull/411"

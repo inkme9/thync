@@ -14,6 +14,8 @@ STATE_DIR = Path(os.environ.get("THYNC_HOME", HOME / ".thync")).expanduser()
 CONFIG_FILE = STATE_DIR / "config.json"
 CLAUDE_LOGS = HOME / ".claude" / "projects"
 CODEX_LOGS = HOME / ".codex" / "sessions"
+# The Claude desktop app's record of each Code session it has: <account>/<org>/local_<id>.json.
+CLAUDE_APP_SESSIONS = HOME / "Library" / "Application Support" / "Claude" / "claude-code-sessions"
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 

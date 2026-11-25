@@ -3,6 +3,7 @@
 // review lists is handed to Claude with its 맡기기 button or by dragging it onto the spine (reflex.ts).
 import { openDetail } from "./detail.ts";
 import { focus } from "./main.ts";
+import { sessionLink } from "./link.ts";
 import { openReflex, runningHandoff } from "./reflex.ts";
 import { isSource, shown, state } from "./state.ts";
 import { REVIEW_STATE, ago, cut } from "./style.ts";
@@ -27,6 +28,19 @@ export function infoButton(id: string): HTMLButtonElement {
   return btn;
 }
 
+/** "Claude 앱" / "Codex 앱": opens the session in the desktop app it runs in. Null for other nodes, remote sessions,
+ *  and a page opened from another machine. The browser hands the link to the app (link.ts). */
+export function appButton(n: ApiNode | undefined): HTMLButtonElement | null {
+  const url = sessionLink(n?.detail.app_url);
+  if (!url) return null;
+  const app = url.startsWith("codex:") ? "Codex" : "Claude";
+  const btn = Object.assign(document.createElement("button"), { className: "info app", textContent: `${app} 앱`,
+    title: `${app} 앱에서 이 세션 열기` });
+  btn.onclick = (e) => { e.stopPropagation(); location.href = url; };
+  btn.ondblclick = (e) => e.stopPropagation();
+  return btn;
+}
+
 /** The drag type a review-list row carries, so the board's own card drops ignore it. */
 export const NODE_DRAG = "application/x-thync-node";
 let dragging = false; // the 2 s refresh would replace the row being dragged
@@ -36,6 +50,8 @@ function item(n: ApiNode, main: string, sub: string, role: string, handoff = fal
   li.append(Object.assign(document.createElement("div"), { className: "main", textContent: main }),
     Object.assign(document.createElement("div"), { className: "sub", textContent: sub }), infoButton(n.id));
   li.onclick = () => focus(n.id);
+  const app = appButton(n);
+  if (app) li.append(app);
   const running = handoff && state.data.handoff ? runningHandoff(n) : undefined;
   if (running) {
     // Handed off and still running: say so instead of offering it again.
@@ -56,7 +72,7 @@ function item(n: ApiNode, main: string, sub: string, role: string, handoff = fal
     li.ondragend = () => { dragging = false; };
   }
   // The hand-off button keeps its key when 맡기기 turns into 맡김, so keyboard focus stays on it.
-  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.classList.contains("hand") ? "hand" : b.textContent}`; });
+  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.classList.contains("hand") ? "hand" : b.classList.contains("app") ? "app" : b.textContent}`; });
   return li;
 }
 
