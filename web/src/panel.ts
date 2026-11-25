@@ -31,7 +31,7 @@ export function infoButton(id: string): HTMLButtonElement {
 /** "Claude 앱" / "Codex 앱": opens the session in the desktop app it runs in. Null for other nodes, remote sessions,
  *  and a page opened from another machine. The browser hands the link to the app (link.ts). */
 export function appButton(n: ApiNode | undefined): HTMLButtonElement | null {
-  const url = sessionLink(n?.detail.app_url);
+  const url = sessionLink(n?.detail.app_url, Boolean(n?.detail.app_elsewhere));
   if (!url) return null;
   const app = url.startsWith("codex:") ? "Codex" : "Claude";
   const btn = Object.assign(document.createElement("button"), { className: "info app", title: `${app} 앱에서 이 세션 열기` });

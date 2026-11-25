@@ -7,10 +7,12 @@ export type LinkKind = "web" | "app" | null;
 
 const SESSION_LINK = /^(claude:\/\/claude\.ai\/epitaxy\/local_[A-Za-z0-9-]{1,64}|codex:\/\/threads\/[0-9a-f-]{1,64})$/;
 
-/** The link that opens a session in its desktop app, when that app is on the machine showing this page. The link
- *  opens the app next to the browser, so a page reached from another machine (over Tailscale) gets none. */
-export function sessionLink(url: unknown, host = location.hostname): string | null {
-  return typeof url === "string" && SESSION_LINK.test(url) && ["127.0.0.1", "localhost", "[::1]"].includes(host) ? url : null;
+/** The link that opens a session in its desktop app, when that app is next to the browser, which is where the link
+ *  opens it. The app of the thync computer: on a page opened there (127.0.0.1). The app of another computer that runs
+ *  the session here over SSH (`elsewhere`): on a page opened from another computer (over Tailscale). */
+export function sessionLink(url: unknown, elsewhere = false, host = location.hostname): string | null {
+  const here = ["127.0.0.1", "localhost", "[::1]"].includes(host);
+  return typeof url === "string" && SESSION_LINK.test(url) && here !== elsewhere ? url : null;
 }
 
 export function linkKind(url: string): LinkKind {

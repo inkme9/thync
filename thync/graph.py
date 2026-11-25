@@ -14,7 +14,7 @@ from .config import (ACTIVITY_SEC, BACKGROUND_SEC, DEFAULT_DAYS, FILES_PER_SESSI
                      RUNNING_STALE_SEC, COMPANY_ROOTS, SESSIONS, SOURCES)
 from .reflex import WORKFLOW
 from .sources import github, notion, obsidian, remote
-from .sources.claude_code import app_links, load_sessions, repo_of
+from .sources.claude_code import app_links, host_links, load_sessions, repo_of
 from .sources.jira import BRANCH_KEY, TITLE_KEY, Jira
 from .store import load_names, load_reflexes, read_cards
 from .util import epoch
@@ -91,6 +91,7 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
     # Sessions on this machine, then those other machines' thync servers report (sources/remote.py).
     sessions = (load_sessions(now, window) if SESSIONS else []) + remote.sessions(now, window)
     claude_app = app_links() if sessions else {}
+    ssh_app = host_links() if SESSIONS else {}
     # With session logs the sessions describe my work; commits would only add a unit per branch and merge.
     commits = github.my_commits() if "github" in SOURCES and not SESSIONS else []
     pages = notion.recent_pages(now) if "notion" in SOURCES else []
@@ -200,14 +201,18 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
         ukey, uname = unit_of(keys, repo, branch, (f"session:{s.id}", title), title)
         unit(ukey, uname, title, profile, last, keys, glow, running, session=True)
 
+        # A remote session links only through this computer's Claude app (over SSH); its Codex app is elsewhere.
+        app_here = claude_app.get(s.id) or ("" if host else s.app_url)
+        # A session another computer's Claude app runs here over SSH opens in that app. That computer's thync may report
+        # the same session as its own, so this holds for the copy with a host too.
+        app_away = "" if app_here else ssh_app.get(s.id, "")
         sid = node(f"session:{s.id}", title, "workThread", profile, glow, roles,
                    kind_label="작업 세션", source=s.source, cwd=s.cwd, branch=s.branch, updated=int(last), working=running,
                    focus_prompts=len(recent_prompts), subagents=subs, claude_working=claude_working,
                    turn_ended=not waiting and not s.claude_turn and subs == 0,
                    last_at=last_prompt_at, first_at=epoch(s.prompts[0][0]), act=model.retention(age), reflex=reflex_url,
                    last_prompt=s.prompts[-1][1][:200], repo=repo, unit=ukey, host=host,
-                   # A remote session links only through this computer's Claude app (over SSH); its Codex app is elsewhere.
-                   app_url=claude_app.get(s.id) or ("" if host else s.app_url),
+                   app_url=app_here or app_away, app_elsewhere=bool(app_away),
                    waiting=waiting and {**waiting, "answerable": answerable})
 
         if reflex_url:
