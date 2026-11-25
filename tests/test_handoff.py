@@ -314,6 +314,10 @@ class HandoffTest(unittest.TestCase):
             run = reflex.run_state(self.saved[A])
         self.assertEqual(run, {"alive": False, "exit": 127})
         self.assertEqual(board.run_label(run, None), "실패 (종료 코드 127)")
+        with mock.patch.object(board, "load_reflexes", return_value=self.saved), mock.patch.object(board, "HANDOFF", True), \
+                mock.patch.object(board, "run_state", return_value=run):
+            [card] = board.build_board({}, {}, {}, {})
+        self.assertFalse(card["running"])  # an ended run can be handed off again
 
 
 class RemoteUrlTest(unittest.TestCase):
@@ -470,11 +474,21 @@ class RunLabelTest(unittest.TestCase):
                 mock.patch.object(board, "run_state", return_value={"alive": True, "exit": None}):
             [card] = board.build_board({}, nodes, {}, {})
             self.assertIn("시작함", card["tags"])  # the earlier run's idle log does not count
+            self.assertTrue(card["running"])  # the review list shows the PR as handed off, not 맡기기
             new = {"id": "session:new", "kind": "workThread", "roles": [], "detail": {
                 "reflex": A, "first_at": 1003, "claude_working": True}}
             [card] = board.build_board({}, {**nodes, new["id"]: new}, {}, {})
         self.assertIn("작업 중", card["tags"])
         self.assertEqual(card["focus"], "session:new")
+
+    def test_a_remote_that_cannot_be_reached_does_not_claim_a_running_hand_off(self):
+        rec = {"tmux": "t", "skill": "concord:pr-to-merge", "started": 1000, "host": "devbox", "ssh": "devbox",
+               "alive": True, "exit": None}
+        for reachable, running in ((True, True), (False, False)):
+            with mock.patch.object(board, "load_reflexes", return_value={}), mock.patch.object(board, "HANDOFF", True), \
+                    mock.patch.object(board.remote, "reflexes", return_value={A: {**rec, "reachable": reachable}}):
+                [card] = board.build_board({}, {}, {}, {})
+            self.assertEqual(card["running"], running)
 
     def test_one_shot_review_records_are_not_shown(self):
         old = {A: {"kind": "review", "skill": "thync 리뷰", "status": "running", "started": 1}}
