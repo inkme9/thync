@@ -4,7 +4,6 @@ With `mien_profiles` set, the GitHub account of every one of those mien profiles
 token `mien exec` hands out, in parallel, and the lists are merged. Without it, gh's active account is the only one.
 The calls take seconds, so refresh_forever() fetches in a background thread and requests only read what it left.
 """
-import collections
 import functools
 import json
 import os
@@ -29,8 +28,10 @@ _lists: dict[str, dict[str, list]] = {}  # account -> "reviews" | "sent" | "comm
 _logins: dict[str, str] = {}  # account -> my login there, lowercased
 # profile -> (when mien handed it out, its GH_TOKEN). In this process's memory only, never on disk.
 _tokens: dict[str, tuple[float, str]] = {}
-_token_locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
+_token_locks: dict[str, threading.Lock] = {}  # profile -> lock; dict.setdefault is atomic, also without the GIL
+_token_failed: dict[str, tuple[float, Exception]] = {}  # profile -> when mien last failed to hand out a token, and how
 TOKEN_TTL_SEC = 3600  # a token GitHub still accepts is asked of mien again after this, so a replaced one takes over
+TOKEN_FAILED_SEC = 60  # how long such a failure is answered without asking mien again
 # mien redacts secrets in what a child prints when one of these says an agent harness records it (mien's
 # CAPTURE_MARKER_VARS). The token goes to thync's pipe, not a harness, so the token read runs without them.
 HARNESS_ENV = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CODEX_THREAD_ID", "COPILOT_AGENT", "MIEN_CAPTURED")
@@ -81,36 +82,51 @@ def _left(end: float, cmd: list[str]) -> float:
 def _token(profile: str, timeout: float) -> tuple[str, bool]:
     """The profile's GitHub token and whether mien was asked for it just now. Asking costs about two seconds (mien
     reads the profile's secrets from its backend), so a token is kept for TOKEN_TTL_SEC. Profiles are asked at
-    once, but each one only once at a time."""
+    once, but each one only once at a time. A failure is answered for TOKEN_FAILED_SEC without asking again, so
+    threads waiting on a profile mien cannot serve do not each spend a mien call in turn."""
     cmd = [MIEN, "exec", profile, "--", "printenv", "GH_TOKEN"]
-    if not _token_locks[profile].acquire(timeout=timeout):  # another thread is asking mien for it
+    lock = _token_locks.setdefault(profile, threading.Lock())
+    if not lock.acquire(timeout=timeout):  # another thread is asking mien for it
         raise subprocess.TimeoutExpired(cmd, timeout)
     try:
         at, token = _tokens.get(profile, (0.0, ""))
         if time.time() - at < TOKEN_TTL_SEC:
             return token, False
+        failed_at, failure = _token_failed.get(profile, (0.0, None))
+        if failure and time.time() - failed_at < TOKEN_FAILED_SEC:
+            raise failure
+        # mien hides secrets in a child's output when an agent harness marker is set, so this one call runs
+        # without them (docs/security.md says what else that turns off).
         env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN", *HARNESS_ENV)}
         try:
             token, err = _run(cmd, None, env, timeout).strip(), ""
+            if not token:  # printenv prints nothing when the profile has no GitHub token: fail, never borrow one
+                err = f"mien profile {profile} has no GitHub token"
         except subprocess.CalledProcessError as e:
-            token, err = "", (e.stderr or "").strip()
-        if not token:  # printenv prints nothing when the profile has no GitHub token; it must fail, not borrow one
-            raise subprocess.CalledProcessError(1, cmd, "", err or f"mien profile {profile} has no GitHub token")
+            token, err = "", (e.stderr or "").strip() or f"mien profile {profile} has no GitHub token"
+        except (subprocess.TimeoutExpired, OSError) as e:
+            _token_failed[profile] = (time.time(), e)
+            raise
+        if not token:
+            _token_failed[profile] = (time.time(), subprocess.CalledProcessError(1, cmd, "", err))
+            raise _token_failed[profile][1]
+        _token_failed.pop(profile, None)
         _tokens[profile] = (time.time(), token)
         return token, True
     finally:
-        _token_locks[profile].release()
+        lock.release()
 
 
 def _drop(profile: str, token: str, timeout: float) -> None:
     """Forget a token GitHub refused, unless another thread has already replaced it."""
-    if not _token_locks[profile].acquire(timeout=timeout):  # another thread is asking mien for a new one
+    lock = _token_locks.setdefault(profile, threading.Lock())
+    if not lock.acquire(timeout=timeout):  # another thread is asking mien for a new one
         raise subprocess.TimeoutExpired([MIEN, "exec", profile], timeout)
     try:
         if _tokens.get(profile, (0.0, ""))[1] == token:
             del _tokens[profile]
     finally:
-        _token_locks[profile].release()
+        lock.release()
 
 
 def gh(account: str, *args: str, stdin: str | None = None, timeout: float = 60) -> str:
@@ -122,7 +138,7 @@ def gh(account: str, *args: str, stdin: str | None = None, timeout: float = 60) 
     NO_LOGIN.mkdir(parents=True, exist_ok=True)
     base = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
     cmd, end = ["gh", *args], time.monotonic() + timeout
-    while True:
+    for retry in (False, True):
         token, fresh = _token(account, _left(end, cmd))
         try:
             return _run(cmd, stdin, {**base, "GH_CONFIG_DIR": str(NO_LOGIN), "GH_TOKEN": token}, _left(end, cmd))
@@ -130,7 +146,7 @@ def gh(account: str, *args: str, stdin: str | None = None, timeout: float = 60) 
             if "HTTP 401" not in (e.stderr or ""):
                 raise
             _drop(account, token, _left(end, cmd))
-            if fresh:
+            if fresh or retry:
                 raise
 
 
@@ -293,7 +309,7 @@ def review_state(pr: dict) -> str:
 
 _canonical: dict[str, str] = {}
 _not_found: dict[str, tuple[float, frozenset]] = {}  # slug -> (when, the accounts that all answered 404)
-NOT_FOUND_SEC = 3600  # how long such a slug is not asked again (each try costs a mien call per account)
+NOT_FOUND_SEC = 3600  # how long such a slug is not asked again (each try costs a gh call per account)
 
 
 def canonical_slug(slug: str) -> str:
