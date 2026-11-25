@@ -3,7 +3,7 @@
 // review lists is handed to Claude with its 맡기기 button or by dragging it onto the spine (reflex.ts).
 import { openDetail } from "./detail.ts";
 import { focus } from "./main.ts";
-import { openReflex } from "./reflex.ts";
+import { openReflex, runningHandoff } from "./reflex.ts";
 import { isSource, shown, state } from "./state.ts";
 import { REVIEW_STATE, ago, cut } from "./style.ts";
 import type { ApiNode } from "./types.ts";
@@ -36,7 +36,16 @@ function item(n: ApiNode, main: string, sub: string, role: string, handoff = fal
   li.append(Object.assign(document.createElement("div"), { className: "main", textContent: main }),
     Object.assign(document.createElement("div"), { className: "sub", textContent: sub }), infoButton(n.id));
   li.onclick = () => focus(n.id);
-  if (handoff && state.data.handoff) {
+  const running = handoff && state.data.handoff ? runningHandoff(n) : undefined;
+  if (running) {
+    // Handed off and still running: say so instead of offering it again.
+    const tag = Object.assign(document.createElement("button"), { className: "info hand running", textContent: "맡김",
+      title: `Claude 에게 맡긴 작업 · ${running.tags.join(" · ")}` });
+    tag.setAttribute("aria-disabled", "true");
+    tag.onclick = (e) => e.stopPropagation();
+    tag.ondblclick = (e) => e.stopPropagation();
+    li.append(tag);
+  } else if (handoff && state.data.handoff) {
     const btn = Object.assign(document.createElement("button"), { className: "info hand", textContent: "맡기기",
       title: "Claude 에게 맡기기 (확인 창이 열려요)" });
     btn.onclick = (e) => { e.stopPropagation(); openReflex(n.id); };

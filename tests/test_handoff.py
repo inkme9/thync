@@ -314,6 +314,10 @@ class HandoffTest(unittest.TestCase):
             run = reflex.run_state(self.saved[A])
         self.assertEqual(run, {"alive": False, "exit": 127})
         self.assertEqual(board.run_label(run, None), "실패 (종료 코드 127)")
+        with mock.patch.object(board, "load_reflexes", return_value=self.saved), mock.patch.object(board, "HANDOFF", True), \
+                mock.patch.object(board, "run_state", return_value=run):
+            [card] = board.build_board({}, {}, {}, {})
+        self.assertFalse(card["running"])  # an ended run can be handed off again
 
 
 class RemoteUrlTest(unittest.TestCase):
@@ -470,6 +474,7 @@ class RunLabelTest(unittest.TestCase):
                 mock.patch.object(board, "run_state", return_value={"alive": True, "exit": None}):
             [card] = board.build_board({}, nodes, {}, {})
             self.assertIn("시작함", card["tags"])  # the earlier run's idle log does not count
+            self.assertTrue(card["running"])  # the review list shows the PR as handed off, not 맡기기
             new = {"id": "session:new", "kind": "workThread", "roles": [], "detail": {
                 "reflex": A, "first_at": 1003, "claude_working": True}}
             [card] = board.build_board({}, {**nodes, new["id"]: new}, {}, {})

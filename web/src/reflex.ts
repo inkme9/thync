@@ -7,7 +7,7 @@ import { claimModal, closeDetail, detailBox, modalTitle } from "./detail.ts";
 import { renderer } from "./renderer.ts";
 import { state } from "./state.ts";
 import { ROLE_COLOR, cut } from "./style.ts";
-import type { ApiNode } from "./types.ts";
+import type { ApiCard, ApiNode } from "./types.ts";
 
 interface Plan { url: string; slug: string; number: number; workflow: string; profile: string; login: string; author: string; cwd: string; host?: string }
 
@@ -26,6 +26,10 @@ export function reflexTargets(id: string): ApiNode[] {
   const unit = self && self.kind !== "workThread" ? id : String(self?.detail.unit ?? id);
   return state.data.nodes.filter((n) => isPR(n) && n.detail.unit === unit);
 }
+
+/** The "맡긴 일" card of a PR whose handed-off session is still running, if any. */
+export const runningHandoff = (n: ApiNode): ApiCard | undefined =>
+  state.data.board.find((c) => c.running && c.id === `reflex:${String(n.detail.url ?? "")}`);
 
 const p = (text: string) => Object.assign(document.createElement("p"), { textContent: text });
 const button = (text: string, primary = false) =>
@@ -106,13 +110,22 @@ export function openReflex(id: string): void {
   void check();
   cancel.onclick = closeDetail;
   ok.onclick = async () => {
-    if (!plan) return;
+    const shown = plan;
+    if (!shown) return;
     wait("시작하는 중"); // the machine checks everything again before it starts
     const n = selected();
-    const res = await post("/reflex", { id: n.id, plan }).catch(() => null);
+    const res = await post("/reflex", { id: n.id, plan: shown }).catch(() => null);
     const { message } = res ? await res.json().catch(() => ({ message: `실패 (${res.status})` }))
       : { message: "서버에 연결하지 못했어요. 시작됐는지 맡긴 일 카드를 확인해 주세요" };
-    if (detailBox.contains(row)) detailBox.replaceChildren(p(message)); // only into this dialog, if still open
     if (res?.ok) renderer.burst(n.id, ROLE_COLOR.running, 1500);
+    if (!detailBox.contains(row)) return; // only into this dialog, if still open
+    // The title says how it went: the question it asked stays wrong once the answer is in.
+    modalTitle.textContent = !res ? "시작됐는지 알 수 없어요" : res.ok ? `${shown.slug}#${shown.number} 를 맡겼어요` : "시작하지 못했어요";
+    const close = button("닫기", true);
+    close.onclick = closeDetail;
+    const done = Object.assign(document.createElement("div"), { className: "actions" });
+    done.append(close);
+    detailBox.replaceChildren(p(message), ...(res?.ok ? [p("진행 상황은 칸반의 '맡긴 일' 칸에 보여요.")] : []), done);
+    close.focus();
   };
 }

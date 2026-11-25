@@ -20,6 +20,8 @@ export interface ApiCard {
   profile: string; updated: string | number; focus: string; tags: string[];
   /** A card of the Obsidian Kanban board: moved and edited in Obsidian, and a click opens `url` there. */
   readonly?: boolean; url?: string;
+  /** A hand-off card ("맡긴 일") whose tmux session is still alive. */
+  running?: boolean;
 }
 export interface ApiGraph {
   schema: number; board: ApiCard[]; generated: number; focus_level: number; handoff: boolean; units: ApiUnit[]; nodes: ApiNode[];

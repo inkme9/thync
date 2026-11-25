@@ -108,7 +108,8 @@ def build_board(units: dict, nodes: dict, names: dict, card_files: dict) -> list
         cards.append({"id": f"reflex:{url}", "title": pr["detail"].get("text", pr["name"]) if pr else url,
                       "sub": pr["name"] if pr else "", "column": "reflex", "auto_column": "reflex", "moved": False,
                       "note": "", "profile": pr["profile"] if pr else PROFILE_WORK, "updated": r["started"],
-                      "focus": (session or pr or {}).get("id", ""), "file": "", "tags": [t for t in tags if t]})
+                      "focus": (session or pr or {}).get("id", ""), "file": "", "tags": [t for t in tags if t],
+                      "running": bool(run.get("alive"))})
 
     # Card files with no automatic card are cards made by hand.
     auto_ids = {c["id"] for c in cards}
