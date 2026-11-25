@@ -8,7 +8,9 @@ machine other local users can reach 127.0.0.1 too, and with `tailscale serve` so
 tailnet's access rules let in. A login listed in `tailscale_users` needs no token: `tailscale serve` names it in
 Tailscale-User-Login. The static page holds no data and needs no token.
 """
+import base64
 import email.header
+import functools
 import gzip
 import hmac
 import json
@@ -49,6 +51,36 @@ SECURITY_HEADERS = {
     "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'",
     "X-Content-Type-Options": "nosniff",
 }
+
+# Session links the page offers (web/src/link.ts), by the name its buttons ask for the icon of.
+APP_LINKS = {"claude": "claude://claude.ai", "codex": "codex://threads"}
+# Draws, at 64 px, the icon of the app macOS opens a link with, as base64 PNG; nothing when no app takes the link.
+ICON_JXA = """ObjC.import("AppKit");
+function run(argv) {
+  const ws = $.NSWorkspace.sharedWorkspace;
+  const app = ws.URLForApplicationToOpenURL($.NSURL.URLWithString(argv[0]));
+  if (!app || app.isNil()) return "";
+  const out = $.NSImage.alloc.initWithSize($.NSMakeSize(64, 64));
+  out.lockFocus;
+  ws.iconForFile(app.path).drawInRectFromRectOperationFraction($.NSMakeRect(0, 0, 64, 64), $.NSZeroRect, $.NSCompositingOperationSourceOver, 1);
+  out.unlockFocus;
+  return $.NSBitmapImageRep.imageRepWithData(out.TIFFRepresentation).representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $())
+    .base64EncodedStringWithOptions(0).js;
+}"""
+
+
+@functools.cache
+def app_icon(name: str) -> bytes:
+    """PNG icon of the app this computer opens `name`'s session links with; empty when there is none.
+
+    It is the icon macOS shows for that app, so the button looks like what it opens. Kept until the hub restarts.
+    """
+    try:
+        out = subprocess.run(["osascript", "-l", "JavaScript", "-e", ICON_JXA, APP_LINKS[name]],
+                             capture_output=True, text=True, timeout=10)
+        return base64.b64decode(out.stdout.strip(), validate=True) if out.returncode == 0 else b""
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return b""
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -152,6 +184,19 @@ class Handler(SimpleHTTPRequestHandler):
                 else:
                     self.send_response(204)
                     self.end_headers()
+            return
+        if url.path.startswith("/app-icon/"):
+            name = url.path.removeprefix("/app-icon/")
+            png = app_icon(name) if name in APP_LINKS else b""
+            if not png:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "max-age=3600")
+            self.send_header("Content-Length", str(len(png)))
+            self.end_headers()
+            self.wfile.write(png)
             return
         if url.path == "/reviews":
             self.get_reviews(parse_qs(url.query).get("url", [""])[0])
