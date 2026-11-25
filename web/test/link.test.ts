@@ -21,11 +21,15 @@ test("a session link opens its app only on the machine that runs it", () => {
   const claude = "claude://claude.ai/epitaxy/local_5e3ac12e-73cb-42ab-95a3-46b66077e992";
   const codex = "codex://threads/01a1a896-b8b6-7a73-a3b8-0cc8e38e7278";
   assert.equal(linkKind(claude), "app");
-  assert.equal(sessionLink(claude, "127.0.0.1"), claude);
-  assert.equal(sessionLink(codex, "localhost"), codex);
-  assert.equal(sessionLink(claude, "mini.tail1234.ts.net"), null);
+  assert.equal(sessionLink(claude, false, "127.0.0.1"), claude);
+  assert.equal(sessionLink(codex, false, "localhost"), codex);
+  assert.equal(sessionLink(claude, false, "mini.tail1234.ts.net"), null);
+  // The app of the computer that runs the session over SSH is next to a browser on another computer.
+  assert.equal(sessionLink(claude, true, "mini.tail1234.ts.net"), claude);
+  assert.equal(sessionLink(claude, true, "127.0.0.1"), null);
   for (const url of ["", undefined, "claude://code/new?q=x", "claude://resume?session=52d04f3e-af3f-4277-b3ee-366ce2e30eeb",
     "claude://claude.ai/epitaxy/local_x?q=y", "codex://threads/new?prompt=x"]) {
-    assert.equal(sessionLink(url, "127.0.0.1"), null, String(url));
+    assert.equal(sessionLink(url, false, "127.0.0.1"), null, String(url));
+    assert.equal(sessionLink(url, true, "mini.tail1234.ts.net"), null, String(url));
   }
 });

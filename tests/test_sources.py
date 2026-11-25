@@ -315,6 +315,24 @@ class AppLink(unittest.TestCase):
             self.assertEqual(claude_code.app_links(), {})  # a terminal session, or one the app let go of
 
 
+class HostLink(unittest.TestCase):
+    def test_a_session_another_computers_app_runs_over_ssh_links_to_that_app(self):
+        cli = "/Users/me/.claude/remote/ccd-cli/2.1.330-e9e20c4d5053"
+        listing = (f"  101 {cli} --output-format stream-json --session-id=52d04f3e-af3f-4277-b3ee-366ce2e30eeb\n"
+                   f"  102 {cli} --session-id=d11aaa84-bd50-43a0-977b-900133e7e223\n"
+                   "  103 /Users/me/.local/bin/claude --session-id=0f0f0f0f-0000-4000-8000-000000000000\n")  # a terminal session
+        env = (f"  101 {cli} --session-id=52d04f3e-af3f-4277-b3ee-366ce2e30eeb GH_TOKEN=secret "
+               "CLAUDE_CODE_HOST_SESSION_ID=local_5e3ac12e-73cb-42ab-95a3-46b66077e992 HOME=/Users/me\n"
+               f"  102 {cli} --session-id=d11aaa84-bd50-43a0-977b-900133e7e223 HOME=/Users/me\n")  # no app id handed over
+        runs = [mock.Mock(stdout=listing), mock.Mock(stdout=env)]
+        with mock.patch.object(claude_code.subprocess, "run", side_effect=runs) as run, \
+                mock.patch.object(claude_code, "_host_links", (0.0, {})):
+            links = claude_code.host_links()
+            self.assertIs(claude_code.host_links(), links)  # read again only after 5 s
+        self.assertEqual(links, {"52d04f3e-af3f-4277-b3ee-366ce2e30eeb": "claude://claude.ai/epitaxy/local_5e3ac12e-73cb-42ab-95a3-46b66077e992"})
+        self.assertEqual(run.call_args.args[0][-2:], ["-p", "101,102"])  # only the app's SSH processes' environment is read
+
+
 class EpochTest(unittest.TestCase):
     def test_offsets_without_colon_parse_on_every_supported_python(self):
         from thync.util import epoch

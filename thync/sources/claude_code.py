@@ -5,7 +5,9 @@ last call. Only the line types thync needs are parsed.
 """
 import json
 import re
+import subprocess
 import threading
+import time
 from collections import deque
 from pathlib import Path
 
@@ -204,6 +206,51 @@ def _app_links() -> dict[str, str]:
             out[cli] = f"claude://claude.ai/epitaxy/{sid}"
     for key in set(_app_records) - seen:  # a record the app deleted
         del _app_records[key]
+    return out
+
+
+# Where the Claude desktop app installs the CLI it runs on this computer over SSH from another computer.
+SSH_CLI = "/.claude/remote/ccd-cli/"
+
+
+_host_links: tuple[float, dict[str, str]] = (0.0, {})  # (when read, links): the page and the desktop each ask every 2 s
+
+
+def host_links() -> dict[str, str]:
+    """CLI session id -> the link that opens it in the Claude desktop app on the other computer that runs it here over
+    SSH, for each such session whose process is running.
+
+    The app hands its own session id to the process as CLAUDE_CODE_HOST_SESSION_ID; nothing on this computer records
+    it. Reading it means reading the process's environment, which also holds what mien put there, tokens included: only
+    that one variable is kept, and only the app's SSH processes are read."""
+    global _host_links
+    if time.time() - _host_links[0] < 5:
+        return _host_links[1]
+    _host_links = (time.time(), _read_host_links())
+    return _host_links[1]
+
+
+def _read_host_links() -> dict[str, str]:
+    try:
+        listing = subprocess.run(["ps", "-ax", "-ww", "-o", "pid=,command="], capture_output=True, text=True, timeout=5).stdout
+        ids = {}
+        for line in listing.splitlines():
+            pid, _, command = line.strip().partition(" ")
+            m = re.search(r" --(?:session-id|resume)[= ]([0-9a-f-]{36})(?: |$)", command)
+            if SSH_CLI in command.split(" ", 1)[0] and m:
+                ids[pid] = m[1]
+        if not ids:
+            return {}
+        env = subprocess.run(["ps", "-E", "-ww", "-o", "pid=,command=", "-p", ",".join(ids)],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    out = {}
+    for line in env.splitlines():
+        pid, _, rest = line.strip().partition(" ")
+        m = re.search(r" CLAUDE_CODE_HOST_SESSION_ID=(local_[A-Za-z0-9-]{1,64})(?: |$)", rest)
+        if pid in ids and m:
+            out[ids[pid]] = f"claude://claude.ai/epitaxy/{m[1]}"
     return out
 
 
