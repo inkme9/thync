@@ -97,9 +97,9 @@ class GitHub(unittest.TestCase):
                 self.assertFalse(set(github.HARNESS_ENV) & set(env))  # else mien redacts the token it prints
                 return next(tokens)
             if env["GH_TOKEN"] == "old" and "revoked" in cmd:
-                raise subprocess.CalledProcessError(1, cmd, stderr="HTTP 401: Bad credentials")
+                raise subprocess.CalledProcessError(1, cmd, stderr="gh: Bad credentials (HTTP 401)")
             if env["GH_TOKEN"] == "newer" and "refused" in cmd:
-                raise subprocess.CalledProcessError(1, cmd, stderr="HTTP 401: Bad credentials")
+                raise subprocess.CalledProcessError(1, cmd, stderr="gh: Bad credentials (HTTP 401)")
             return env["GH_TOKEN"]
 
         def mien_calls():
@@ -115,6 +115,46 @@ class GitHub(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 github.gh("a", "api", "refused")  # newer is fresh, so its own 401 is not asked about again
             self.assertEqual(mien_calls(), 3)
+
+    def test_a_401_keeps_a_token_another_thread_already_replaced(self):
+        def run(cmd, stdin, env, timeout):
+            self.assertNotEqual(cmd[0], "mien")
+            if env["GH_TOKEN"] == "old":
+                github._tokens["a"] = (time.time(), "new")  # another thread replaced it while this call ran
+                raise subprocess.CalledProcessError(1, cmd, "", "gh: Bad credentials (HTTP 401)")
+            return env["GH_TOKEN"]
+
+        with mock.patch.multiple(github, MIEN="mien", _tokens={"a": (time.time(), "old")}), \
+                mock.patch.object(github, "_run", side_effect=run):
+            self.assertEqual(github.gh("a", "api", "x"), "new")
+
+    def test_a_token_refused_right_after_mien_handed_it_out_is_dropped(self):
+        def run(cmd, stdin, env, timeout):
+            if cmd[0] == "mien":
+                return "bad\n"
+            raise subprocess.CalledProcessError(1, cmd, "", "gh: Bad credentials (HTTP 401)")
+
+        with mock.patch.multiple(github, MIEN="mien", _tokens={}), mock.patch.object(github, "_run", side_effect=run):
+            with self.assertRaises(subprocess.CalledProcessError):
+                github.gh("a", "api", "x")
+            self.assertNotIn("a", github._tokens)  # the next call asks mien, not GitHub with the same token
+
+    def test_a_token_read_that_times_out_keeps_nothing_and_is_asked_again(self):
+        answers = [subprocess.TimeoutExpired(["mien"], 30), "tok\n", "ok"]
+
+        def run(cmd, stdin, env, timeout):
+            self.assertLessEqual(timeout, 30)  # within the caller's timeout, never a fresh one per step
+            answer = answers.pop(0)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        with mock.patch.multiple(github, MIEN="mien", _tokens={}), mock.patch.object(github, "_run", side_effect=run):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                github.gh("a", "api", "x", timeout=30)
+            self.assertNotIn("a", github._tokens)
+            self.assertEqual(github.gh("a", "api", "x", timeout=30), "ok")
+        self.assertEqual(answers, [])
 
     def test_a_profile_without_a_github_token_fails(self):
         def run(cmd, stdin, env, timeout):

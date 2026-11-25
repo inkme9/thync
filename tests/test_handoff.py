@@ -34,6 +34,7 @@ class FakeMachine:
         self.author, self.login, self.profile, self.tmux_rc, self.state = author, login, profile, tmux_rc, state
         self.draft, self.alive = draft, alive
         self.calls: list[list[str]] = []
+        self.gh_accounts: list[str] = []  # the account of each sources/github.gh call
         self.envs: dict[str, dict | None] = {}
 
     def __call__(self, argv, **kw):
@@ -57,8 +58,9 @@ class FakeMachine:
         return mock.Mock(returncode=rc, stdout=out, stderr=err)
 
     def gh(self, account: str, *args: str, **kw) -> str:
-        """sources/github.gh on this machine: through `mien exec <profile> --` when a profile is given."""
-        argv = [*(["mien", "exec", account, "--"] if account else []), "gh", *args]
+        """sources/github.gh on this machine, as the given account ("" = gh's active one)."""
+        self.gh_accounts.append(account)
+        argv = ["gh", *args]
         r = self(argv)
         if r.returncode:
             raise subprocess.CalledProcessError(r.returncode, argv, r.stdout, r.stderr)
@@ -191,8 +193,7 @@ class HandoffTest(unittest.TestCase):
         machine = FakeMachine(author="alice", profile="")
         status, plan = self.run_handoff(pr_node("review"), machine, call=lambda n: reflex.plan_reflex(n, "cryptolab"))
         self.assertEqual((status, plan["profile"]), (200, "cryptolab"))
-        gh_calls = [c for c in machine.calls if "gh" in c]
-        self.assertTrue(gh_calls and all(c[:4] == ["mien", "exec", "cryptolab", "--"] for c in gh_calls))
+        self.assertTrue(machine.gh_accounts and set(machine.gh_accounts) == {"cryptolab"})
         status, _ = self.run_handoff(pr_node("review"), FakeMachine(author="alice", profile=""),
                                      call=lambda n: reflex.plan_reflex(n, ""))
         self.assertEqual(status, 409)  # no claim and no listing profile: nothing to run as
@@ -206,13 +207,13 @@ class HandoffTest(unittest.TestCase):
                           "profile": "cryptolab", "login": "me", "author": "alice"})
         self.assertEqual((machine.launches(), self.saved), ([], {}))
         # The account is read as the profile, never as the server's own gh account.
-        self.assertTrue(all(c[:3] == ["mien", "exec", "cryptolab"] for c in machine.calls if "gh" in c))
+        self.assertEqual(set(machine.gh_accounts), {"cryptolab"})
 
     def test_a_second_check_reuses_the_login(self):
         machine = FakeMachine(author="alice")
         both = self.run_handoff(pr_node("review"), machine, call=lambda n: [reflex.plan_reflex(n) for _ in range(2)])
         self.assertEqual([status for status, _ in both], [200, 200])
-        self.assertEqual(sum("user" in c for c in machine.calls if "gh" in c), 1)  # each call is a mien call, ~2 s
+        self.assertEqual(sum("user" in c for c in machine.calls if "gh" in c), 1)  # each check would otherwise ask GitHub again
 
     def test_start_refuses_when_the_check_differs_from_what_was_confirmed(self):
         same = {"url": A, "workflow": "concord:review-until-approve", "profile": "cryptolab", "login": "me", "cwd": self.clone}

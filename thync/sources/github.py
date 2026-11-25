@@ -69,16 +69,26 @@ def _run(cmd: list[str], stdin: str | None, env: dict | None, timeout: int) -> s
     return out
 
 
-def _token(profile: str, timeout: int) -> tuple[str, bool]:
+def _left(end: float, cmd: list[str]) -> float:
+    """Seconds left until `end`, so one gh() call keeps to the timeout its caller gave, waits included."""
+    left = end - time.monotonic()
+    if left <= 0:
+        raise subprocess.TimeoutExpired(cmd, 0)
+    return left
+
+
+def _token(profile: str, timeout: float) -> tuple[str, bool]:
     """The profile's GitHub token and whether mien was asked for it just now. Asking costs about two seconds (mien
     reads the profile's secrets from its backend), so a token is kept for TOKEN_TTL_SEC. Profiles are asked at
     once, but each one only once at a time."""
-    with _token_locks[profile]:
+    cmd = [MIEN, "exec", profile, "--", "printenv", "GH_TOKEN"]
+    if not _token_locks[profile].acquire(timeout=timeout):  # another thread is asking mien for it
+        raise subprocess.TimeoutExpired(cmd, timeout)
+    try:
         at, token = _tokens.get(profile, (0.0, ""))
         if time.time() - at < TOKEN_TTL_SEC:
             return token, False
         env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN", *HARNESS_ENV)}
-        cmd = [MIEN, "exec", profile, "--", "printenv", "GH_TOKEN"]
         try:
             token, err = _run(cmd, None, env, timeout).strip(), ""
         except subprocess.CalledProcessError as e:
@@ -87,24 +97,36 @@ def _token(profile: str, timeout: int) -> tuple[str, bool]:
             raise subprocess.CalledProcessError(1, cmd, "", err or f"mien profile {profile} has no GitHub token")
         _tokens[profile] = (time.time(), token)
         return token, True
+    finally:
+        _token_locks[profile].release()
 
 
-def gh(account: str, *args: str, stdin: str | None = None, timeout: int = 60) -> str:
+def _drop(profile: str, token: str) -> None:
+    """Forget a token GitHub refused, unless another thread has already replaced it."""
+    with _token_locks[profile]:
+        if _tokens.get(profile, (0.0, ""))[1] == token:
+            del _tokens[profile]
+
+
+def gh(account: str, *args: str, stdin: str | None = None, timeout: float = 60) -> str:
     """Run gh as one account and return its output. A profile's call hands gh only that profile's token
     (_token), and gh's own logins are pointed away from. A token GitHub refuses (401: revoked or replaced) is
-    dropped, and asked of mien again once."""
+    dropped; one that was kept, not just handed out, is asked of mien again once."""
     if not account:
         return _run(["gh", *args], stdin, None, timeout)
     NO_LOGIN.mkdir(parents=True, exist_ok=True)
     base = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
+    cmd, end = ["gh", *args], time.monotonic() + timeout
     while True:
-        token, fresh = _token(account, timeout)
+        token, fresh = _token(account, _left(end, cmd))
         try:
-            return _run(["gh", *args], stdin, {**base, "GH_CONFIG_DIR": str(NO_LOGIN), "GH_TOKEN": token}, timeout)
+            return _run(cmd, stdin, {**base, "GH_CONFIG_DIR": str(NO_LOGIN), "GH_TOKEN": token}, _left(end, cmd))
         except subprocess.CalledProcessError as e:
-            if fresh or "HTTP 401" not in (e.stderr or ""):
+            if "HTTP 401" not in (e.stderr or ""):
                 raise
-            _tokens.pop(account, None)
+            _drop(account, token)
+            if fresh:
+                raise
 
 
 def readers() -> list[str]:
