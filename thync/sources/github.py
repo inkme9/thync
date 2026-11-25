@@ -70,7 +70,8 @@ def _run(cmd: list[str], stdin: str | None, env: dict | None, timeout: int) -> s
 
 
 def _left(end: float, cmd: list[str]) -> float:
-    """Seconds left until `end`, so one gh() call keeps to the timeout its caller gave, waits included."""
+    """Seconds left until `end`: the waits, the mien call and the gh call of one gh() share the caller's timeout.
+    A step that times out still gets _run's 10 s for mien to clean up after SIGINT."""
     left = end - time.monotonic()
     if left <= 0:
         raise subprocess.TimeoutExpired(cmd, 0)
@@ -101,11 +102,15 @@ def _token(profile: str, timeout: float) -> tuple[str, bool]:
         _token_locks[profile].release()
 
 
-def _drop(profile: str, token: str) -> None:
+def _drop(profile: str, token: str, timeout: float) -> None:
     """Forget a token GitHub refused, unless another thread has already replaced it."""
-    with _token_locks[profile]:
+    if not _token_locks[profile].acquire(timeout=timeout):  # another thread is asking mien for a new one
+        raise subprocess.TimeoutExpired([MIEN, "exec", profile], timeout)
+    try:
         if _tokens.get(profile, (0.0, ""))[1] == token:
             del _tokens[profile]
+    finally:
+        _token_locks[profile].release()
 
 
 def gh(account: str, *args: str, stdin: str | None = None, timeout: float = 60) -> str:
@@ -124,7 +129,7 @@ def gh(account: str, *args: str, stdin: str | None = None, timeout: float = 60) 
         except subprocess.CalledProcessError as e:
             if "HTTP 401" not in (e.stderr or ""):
                 raise
-            _drop(account, token)
+            _drop(account, token, _left(end, cmd))
             if fresh:
                 raise
 

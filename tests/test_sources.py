@@ -140,21 +140,24 @@ class GitHub(unittest.TestCase):
             self.assertNotIn("a", github._tokens)  # the next call asks mien, not GitHub with the same token
 
     def test_a_token_read_that_times_out_keeps_nothing_and_is_asked_again(self):
-        answers = [subprocess.TimeoutExpired(["mien"], 30), "tok\n", "ok"]
+        answers, now, timeouts = [subprocess.TimeoutExpired(["mien"], 30), "tok\n", "ok"], [0.0], []
 
         def run(cmd, stdin, env, timeout):
-            self.assertLessEqual(timeout, 30)  # within the caller's timeout, never a fresh one per step
+            timeouts.append(timeout)
+            now[0] += 10  # each step takes 10 s
             answer = answers.pop(0)
             if isinstance(answer, Exception):
                 raise answer
             return answer
 
-        with mock.patch.multiple(github, MIEN="mien", _tokens={}), mock.patch.object(github, "_run", side_effect=run):
+        with mock.patch.multiple(github, MIEN="mien", _tokens={}), mock.patch.object(github, "_run", side_effect=run), \
+                mock.patch.object(github.time, "monotonic", lambda: now[0]):
             with self.assertRaises(subprocess.TimeoutExpired):
                 github.gh("a", "api", "x", timeout=30)
             self.assertNotIn("a", github._tokens)
             self.assertEqual(github.gh("a", "api", "x", timeout=30), "ok")
         self.assertEqual(answers, [])
+        self.assertEqual(timeouts, [30, 30, 20])  # the gh call gets what the mien call left of the same 30 s
 
     def test_a_profile_without_a_github_token_fails(self):
         def run(cmd, stdin, env, timeout):
