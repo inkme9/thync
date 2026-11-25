@@ -232,12 +232,14 @@ class HubTest(unittest.TestCase):
                 status, reply = self.call(hub, {"id": node["id"], "plan": {}})
             self.assertEqual((status, start.call_count), (502, 0))
             self.assertEqual(reply["message"], "devbox1: 터널 끊김 · 시작됐는지 알 수 없어요. 맡긴 일 카드를 확인해 주세요")
+            self.assertTrue(reply["unreached"])  # the page titles it "unknown", not "failed"
             with mock.patch.object(server, "REFLEX_HOST", "devbox1"), mock.patch.object(server, "HANDOFF", True), \
                     mock.patch.object(server, "build_graph", return_value={"nodes": [node]}), \
                     mock.patch.object(self.r, "post", return_value=(502, {"message": "GitHub 계정이나 PR 을 확인하지 못했어요"})):
                 status, reply = self.call(hub, {"id": node["id"], "plan": {}})
             # The far end answered: nothing started there, so no "may have started", and it is named once.
             self.assertEqual((status, reply["message"]), (502, "devbox1: GitHub 계정이나 PR 을 확인하지 못했어요"))
+            self.assertNotIn("unreached", reply)
         finally:
             hub.close()
 

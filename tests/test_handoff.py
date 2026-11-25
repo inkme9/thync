@@ -481,6 +481,15 @@ class RunLabelTest(unittest.TestCase):
         self.assertIn("작업 중", card["tags"])
         self.assertEqual(card["focus"], "session:new")
 
+    def test_a_remote_that_cannot_be_reached_does_not_claim_a_running_hand_off(self):
+        rec = {"tmux": "t", "skill": "concord:pr-to-merge", "started": 1000, "host": "devbox", "ssh": "devbox",
+               "alive": True, "exit": None}
+        for reachable, running in ((True, True), (False, False)):
+            with mock.patch.object(board, "load_reflexes", return_value={}), mock.patch.object(board, "HANDOFF", True), \
+                    mock.patch.object(board.remote, "reflexes", return_value={A: {**rec, "reachable": reachable}}):
+                [card] = board.build_board({}, {}, {}, {})
+            self.assertEqual(card["running"], running)
+
     def test_one_shot_review_records_are_not_shown(self):
         old = {A: {"kind": "review", "skill": "thync 리뷰", "status": "running", "started": 1}}
         with mock.patch.object(board, "load_reflexes", return_value=old), mock.patch.object(board, "HANDOFF", True):

@@ -55,7 +55,8 @@ function item(n: ApiNode, main: string, sub: string, role: string, handoff = fal
     li.ondragstart = (e) => { dragging = true; e.dataTransfer!.setData(NODE_DRAG, n.id); e.dataTransfer!.effectAllowed = "link"; };
     li.ondragend = () => { dragging = false; };
   }
-  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.textContent}`; });
+  // The hand-off button keeps its key when 맡기기 turns into 맡김, so keyboard focus stays on it.
+  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.classList.contains("hand") ? "hand" : b.textContent}`; });
   return li;
 }
 

@@ -113,14 +113,16 @@ export function openReflex(id: string): void {
     const shown = plan;
     if (!shown) return;
     wait("시작하는 중"); // the machine checks everything again before it starts
+    pick.disabled = true; // another PR picked now would get a 시작 whose answer this dialog never shows
     const n = selected();
     const res = await post("/reflex", { id: n.id, plan: shown }).catch(() => null);
-    const { message } = res ? await res.json().catch(() => ({ message: `실패 (${res.status})` }))
-      : { message: "서버에 연결하지 못했어요. 시작됐는지 맡긴 일 카드를 확인해 주세요" };
+    const { message, unreached } = res ? await res.json().catch(() => ({ message: `실패 (${res.status})` }))
+      : { message: "서버에 연결하지 못했어요. 시작됐는지 맡긴 일 카드를 확인해 주세요", unreached: true };
     if (res?.ok) renderer.burst(n.id, ROLE_COLOR.running, 1500);
     if (!detailBox.contains(row)) return; // only into this dialog, if still open
     // The title says how it went: the question it asked stays wrong once the answer is in.
-    modalTitle.textContent = !res ? "시작됐는지 알 수 없어요" : res.ok ? `${shown.slug}#${shown.number} 를 맡겼어요` : "시작하지 못했어요";
+    // Unknown: this server, or the hub forwarding to the machine that runs it, lost the answer partway.
+    modalTitle.textContent = res?.ok ? `${shown.slug}#${shown.number} 를 맡겼어요` : unreached ? "시작됐는지 알 수 없어요" : "시작하지 못했어요";
     const close = button("닫기", true);
     close.onclick = closeDetail;
     const done = Object.assign(document.createElement("div"), { className: "actions" });

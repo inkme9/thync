@@ -223,11 +223,12 @@ def sessions(now: float, window: float) -> list[tuple[RemoteSession, float, int]
 
 
 def reflexes() -> dict[str, dict]:
-    """PR hand-offs the remotes run: {url: record plus "host", "ssh", "alive" and "exit"}."""
+    """PR hand-offs the remotes run: {url: record plus "host", "ssh", "alive", "exit" and "reachable"}. "alive" is what
+    the remote last said; "reachable" is whether it can be asked now."""
     out = {}
     for r in _remotes:
         with r.lock:
-            out.update({url: {**rec, "host": r.name, "ssh": r.ssh} for url, rec in r.reflexes.items()})
+            out.update({url: {**rec, "host": r.name, "ssh": r.ssh, "reachable": r.ok} for url, rec in r.reflexes.items()})
     return out
 
 

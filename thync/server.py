@@ -260,9 +260,10 @@ class Handler(SimpleHTTPRequestHandler):
                 message = str(reply["message"])  # made by Remote.post, which already names the machine
             else:  # the far end's answer, named so an attach command in it is read as one for that machine
                 message = f"{REFLEX_HOST}: {reply.get('message') or f'응답 {status}'}"
-            if reply.get("unreached") and not check:
+            unknown = bool(reply.get("unreached")) and not check
+            if unknown:
                 message += " · 시작됐는지 알 수 없어요. 맡긴 일 카드를 확인해 주세요"
-            self.send_json(status, {"message": message})
+            self.send_json(status, {"message": message, **({"unreached": True} if unknown else {})})
             return
         if not HANDOFF or REFLEX_HOST:
             self.send_json(503, {"message": "이 머신에는 claude CLI 나 세션 기록이 없어 PR 을 맡길 수 없어요"})
