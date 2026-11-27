@@ -4,7 +4,7 @@
 import { prLink } from "./card.ts";
 import { openDetail, openOnce } from "./detail.ts";
 import { focus } from "./main.ts";
-import { noteLink, sessionLink } from "./link.ts";
+import { appLink, linkKind } from "./link.ts";
 import { openReflex, runningHandoff } from "./reflex.ts";
 import { isSource, shown, state } from "./state.ts";
 import { REVIEW_STATE, ago, cut } from "./style.ts";
@@ -35,21 +35,25 @@ export function infoButton(id: string): HTMLButtonElement {
   return btn;
 }
 
-/** "Claude 앱" / "Codex 앱" / "Obsidian 앱": opens the session in the desktop app it runs in, or the Obsidian note in
- *  Obsidian. Null for other nodes and where the link would open an app that does not have it (link.ts). The browser
- *  hands the link to the app. */
+/** Opens an app link: the browser hands an app's own scheme to the app; a claude.ai page opens in its own tab. */
+export function openApp(url: string): void {
+  if (linkKind(url) === "web") openOnce(url);
+  else location.href = url;
+}
+
+/** "Claude 앱" / "Codex 앱" / "Obsidian 앱": opens the session or note where appLink says. */
 export function appButton(n: ApiNode | undefined): HTMLButtonElement | null {
-  const note = n?.kind === "dailyNote" ? noteLink(n.detail.url) : null;
-  const url = note ?? sessionLink(n?.detail.app_url, Boolean(n?.detail.app_elsewhere));
-  if (!url) return null;
-  const app = note ? "Obsidian" : url.startsWith("codex:") ? "Codex" : "Claude";
+  const link = appLink(n);
+  if (!link) return null;
+  const { url, app, note, web } = link;
   const btn = Object.assign(document.createElement("button"), { className: "info app",
-    title: `${app} 앱에서 이 ${note ? "노트" : "세션"} 열기` });
+    title: web ? "claude.ai 에서 이 세션 열기" : `${app} 앱에서 이 ${note ? "노트" : "세션"} 열기` });
   // The icon of the app this computer opens the link with; its name when the hub has no icon for it.
-  const icon = Object.assign(document.createElement("img"), { src: `/app-icon/${app.toLowerCase()}`, alt: `${app} 앱` });
-  icon.onerror = () => icon.replaceWith(`${app} 앱`);
+  const name = web ? "claude.ai" : `${app} 앱`;
+  const icon = Object.assign(document.createElement("img"), { src: `/app-icon/${app.toLowerCase()}`, alt: name });
+  icon.onerror = () => icon.replaceWith(name);
   btn.append(icon);
-  btn.onclick = (e) => { e.stopPropagation(); location.href = url; };
+  btn.onclick = (e) => { e.stopPropagation(); openApp(url); };
   btn.ondblclick = (e) => e.stopPropagation();
   return btn;
 }

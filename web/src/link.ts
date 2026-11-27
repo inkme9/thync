@@ -14,6 +14,26 @@ export function sessionLink(url: unknown, elsewhere = false, host = location.hos
   return typeof url === "string" && SESSION_LINK.test(url) && isHere(host) !== elsewhere ? url : null;
 }
 
+const WEB_SESSION_LINK = /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{1,64}$/;
+
+/** The claude.ai page of a session Remote Control connects. It opens on any device: in the Claude app where one is
+ *  installed, else in the browser. */
+export const webSessionLink = (url: unknown): string | null =>
+  typeof url === "string" && WEB_SESSION_LINK.test(url) ? url : null;
+
+interface LinkNode { kind: string; detail: Record<string, unknown> }
+
+/** Where a session or note opens: the desktop app it runs in or Obsidian, when that app is next to this browser; else
+ *  the claude.ai page of a session Remote Control connects, which opens on a phone or tablet too. Null when nothing
+ *  here can open it. `web`: the link is a claude.ai page, not an app's own link. */
+export function appLink(n: LinkNode | undefined, host = location.hostname): { url: string; app: string; note: boolean; web: boolean } | null {
+  const note = n?.kind === "dailyNote" ? noteLink(n.detail.url, host) : null;
+  const app = note ?? sessionLink(n?.detail.app_url, Boolean(n?.detail.app_elsewhere), host);
+  const url = app ?? webSessionLink(n?.detail.web_url);
+  if (!url) return null;
+  return { url, app: note ? "Obsidian" : url.startsWith("codex:") ? "Codex" : "Claude", note: !!note, web: !app };
+}
+
 const NOTE_LINK = /^obsidian:\/\/open\?path=[^\s&#]+$/;
 
 /** The link that opens an Obsidian note in the Obsidian app. The note is a file on the thync computer, so only a page

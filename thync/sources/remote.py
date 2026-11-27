@@ -43,6 +43,7 @@ class RemoteSession:
         self.files = {str(f): str(t) for f, t in (d.get("files") or {}).items()}
         self.events = [tuple(e) for e in d.get("events", [])]
         self.claude_turn = bool(d.get("claude_turn"))
+        self.web_url = str(d.get("web_url", ""))
         self.waiting = d.get("waiting") or None
         self.last_at = str(d.get("last_at", ""))
         # Worked out on the server, which knows its own folders, PR hand-offs and question hooks.

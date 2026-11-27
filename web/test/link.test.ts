@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { linkKind, noteLink, sessionLink } from "../src/link.ts";
+import { appLink, linkKind, noteLink, sessionLink, webSessionLink } from "../src/link.ts";
 
 test("http and https urls open as web links", () => {
   assert.equal(linkKind("https://github.com/o/r/pull/7"), "web");
@@ -41,4 +41,22 @@ test("an Obsidian note opens in Obsidian only from a page on the thync computer"
   for (const url of ["", undefined, "obsidian://new?name=x", "obsidian://open?vault=v&file=x", "obsidian://open?path=a b"]) {
     assert.equal(noteLink(url, "127.0.0.1"), null, String(url));
   }
+});
+
+test("the claude.ai page of a Remote Control session opens from any device", () => {
+  const url = "https://claude.ai/code/session_01MDtL5zEM1z7iYeaDfEx7vE";
+  assert.equal(webSessionLink(url), url);
+  for (const bad of ["", undefined, "https://claude.ai/code/session_x/../../logout", "https://evil.example/code/session_01",
+    "http://claude.ai/code/session_01", "https://claude.ai/code/cse_01"]) {
+    assert.equal(webSessionLink(bad), null, String(bad));
+  }
+});
+
+test("a session opens in its desktop app where it can, else on its claude.ai page", () => {
+  const app = "claude://claude.ai/epitaxy/local_5e3ac12e-73cb-42ab-95a3-46b66077e992";
+  const web = "https://claude.ai/code/session_01MDtL5zEM1z7iYeaDfEx7vE";
+  const node = { kind: "workThread", detail: { app_url: app, web_url: web } };
+  assert.deepEqual(appLink(node, "127.0.0.1"), { url: app, app: "Claude", note: false, web: false });
+  assert.deepEqual(appLink(node, "mini.tail1234.ts.net"), { url: web, app: "Claude", note: false, web: true });
+  assert.equal(appLink({ kind: "workThread", detail: { app_url: "codex://threads/01a1a896-b8b6-7a73-a3b8-0cc8e38e7278" } }, "mini.tail1234.ts.net"), null);
 });

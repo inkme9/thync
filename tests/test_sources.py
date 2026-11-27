@@ -315,6 +315,22 @@ class AppLink(unittest.TestCase):
             self.assertEqual(claude_code.app_links(), {})  # a terminal session, or one the app let go of
 
 
+class WebLink(unittest.TestCase):
+    def test_a_session_links_to_its_claude_ai_page_while_remote_control_connects_it(self):
+        path = Path(tempfile.mkdtemp()) / "52d04f3e-af3f-4277-b3ee-366ce2e30eeb.jsonl"
+        status = '{"type":"system","subtype":"bridge_status","url":"%s"}\n'
+        path.write_text(status % "https://claude.ai/code/session_01MDtL5zEM1z7iYeaDfEx7vE"
+                        + status % "https://claude.ai/code/session_01/../logout")  # not a session page: ignored
+        s = claude_code.Session(path)
+        s.update()
+        self.assertEqual(s.web_url, "https://claude.ai/code/session_01MDtL5zEM1z7iYeaDfEx7vE")
+        with path.open("a") as f:
+            f.write('{"type":"system","subtype":"informational","content":"Remote Control disconnected — this session was ended"}\n'
+                    '{"type":"bridge-session","bridgeSessionId":"cse_01MDtL5zEM1z7iYeaDfEx7vE"}\n')  # still logged after it
+        s.update()
+        self.assertEqual(s.web_url, "")
+
+
 class HostLink(unittest.TestCase):
     def test_a_session_another_computers_app_runs_over_ssh_links_to_that_app(self):
         cli = "/Users/me/.claude/remote/ccd-cli/2.1.330-e9e20c4d5053"

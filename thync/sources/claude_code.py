@@ -42,6 +42,9 @@ def describe_tool(block: dict) -> str:
     return name
 
 
+WEB_URL = re.compile(r"https://claude\.ai/code/session_[A-Za-z0-9]{1,64}")
+
+
 class Session:
     """One session log, read incrementally."""
 
@@ -56,6 +59,9 @@ class Session:
         self.events: deque = deque(maxlen=40)
         self.claude_turn = False
         self.app_url = ""  # the link that opens the session in the desktop app that runs it (codex.py; app_links)
+        # The claude.ai page of the session while Remote Control connects it: opens it from any device, in the Claude app
+        # where one is installed, else in the browser. Set by the log's bridge_status record, cleared when it disconnects.
+        self.web_url = ""
         self.waiting: dict | None = None  # a question put to me and not answered yet: {id, at, tool, questions}
         # Time of the last prompt or reply. The file mtime is not enough: the app appends metadata to old logs.
         self.last_at = ""
@@ -127,6 +133,14 @@ class Session:
             self.title = json.loads(line).get("customTitle") or self.title
         elif '"type":"ai-title"' in line:
             self.ai_title = json.loads(line).get("aiTitle") or self.ai_title
+        elif '"subtype":"bridge_status"' in line:  # Remote Control connected
+            d = json.loads(line)
+            url = str(d.get("url") or "")
+            if d.get("type") == "system" and WEB_URL.fullmatch(url):
+                self.web_url = url
+        elif '"content":"Remote Control disconnected' in line:  # ended or archived from another device or app
+            if json.loads(line).get("type") == "system":
+                self.web_url = ""
         elif '"type":"pr-link"' in line:
             d = json.loads(line)
             if d.get("prUrl"):

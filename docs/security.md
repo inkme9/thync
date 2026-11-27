@@ -34,6 +34,7 @@ thync는 수집한 작업 정보를 로컬 화면에 제공합니다. 외부 서
 | Notion | 설정한 API로 페이지를 조회합니다 | 쓰지 않습니다 |
 | Obsidian | `obsidian_vaults`에 적은 폴더의 `.md` 파일을 이 컴퓨터에서 읽습니다. 본문에서는 노트 링크, 태그, Jira 키, GitHub PR 주소만 뽑고 문장은 저장하지 않습니다. `obsidian_board`에 적은 Kanban 보드 파일 하나는 예외로, 카드의 글을 읽어 칸반에 보여 줍니다 | 쓰지 않습니다. 보드 카드는 thync에서 옮기거나 고칠 수 없습니다 |
 | Claude 데스크탑 앱 | 세션을 앱에서 여는 버튼을 위해 앱의 세션 id 를 읽습니다. 이 컴퓨터의 앱이 가진 세션은 앱의 세션 기록 파일에서, 다른 컴퓨터의 앱이 SSH 로 이 컴퓨터에서 돌리는 세션은 그 프로세스의 환경 변수에서 읽습니다([세션 프로세스의 환경 변수](#세션-프로세스의-환경-변수)) | 쓰지 않습니다 |
+| Claude Code 세션 로그의 Remote Control 기록 | Remote Control 이 연결된 세션의 claude.ai 주소(`https://claude.ai/code/session_…`)를 읽어 `GET /graph.json` 과 다른 서버에 주는 `GET /sessions.json` 으로 내보냅니다. 이 주소를 열려면 그 세션의 Claude 계정으로 로그인해야 합니다 | 쓰지 않습니다 |
 | Claude CLI | PR 위임 시 PR 내용과 로컬 저장소 내용을 처리합니다 | 외부 통신과 데이터 처리는 해당 CLI 설정과 서비스 정책을 따릅니다 |
 
 Jira·Notion 요청은 리다이렉트를 따라가지 않아 토큰이 다른 호스트로 전달되는 것을 차단합니다. 출처별 수집 범위와 주기는 [설정 안내](configuration.md#수집-주기와-범위)에 설명합니다.

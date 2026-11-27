@@ -29,7 +29,7 @@ def session_dict(s, last: float, subs: int, now: float, reflexes: dict) -> dict:
         "prs": s.prs,
         "files": {f: t for f, t in s.files.items() if epoch(t) > now - FILES_SEC},
         "events": [e for e in s.events if epoch(e[0]) > now - ACTIVITY_SEC],
-        "claude_turn": s.claude_turn, "waiting": waiting, "last_at": s.last_at,
+        "web_url": s.web_url, "claude_turn": s.claude_turn, "waiting": waiting, "last_at": s.last_at,
         "last": last, "subs": subs,
         "profile": profile_of(s.cwd), "repo": repo_of(s.cwd), "reflex": reflex_of(s, reflexes),
         "answerable": bool(waiting) and ask.answerable(waiting["id"]),
