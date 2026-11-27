@@ -212,7 +212,7 @@ def build_graph(days: int = DEFAULT_DAYS) -> dict:
                    turn_ended=not waiting and not s.claude_turn and subs == 0,
                    last_at=last_prompt_at, first_at=epoch(s.prompts[0][0]), act=model.retention(age), reflex=reflex_url,
                    last_prompt=s.prompts[-1][1][:200], repo=repo, unit=ukey, host=host,
-                   app_url=app_here or app_away, app_elsewhere=bool(app_away),
+                   app_url=app_here or app_away, app_elsewhere=bool(app_away), web_url=s.web_url,
                    waiting=waiting and {**waiting, "answerable": answerable})
 
         if reflex_url:

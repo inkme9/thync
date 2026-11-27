@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { linkKind, noteLink, sessionLink } from "../src/link.ts";
+import { linkKind, noteLink, sessionLink, webSessionLink } from "../src/link.ts";
 
 test("http and https urls open as web links", () => {
   assert.equal(linkKind("https://github.com/o/r/pull/7"), "web");
@@ -40,5 +40,14 @@ test("an Obsidian note opens in Obsidian only from a page on the thync computer"
   assert.equal(noteLink(note, "mini.tail1234.ts.net"), null);
   for (const url of ["", undefined, "obsidian://new?name=x", "obsidian://open?vault=v&file=x", "obsidian://open?path=a b"]) {
     assert.equal(noteLink(url, "127.0.0.1"), null, String(url));
+  }
+});
+
+test("the claude.ai page of a Remote Control session opens from any device", () => {
+  const url = "https://claude.ai/code/session_01MDtL5zEM1z7iYeaDfEx7vE";
+  assert.equal(webSessionLink(url), url);
+  for (const bad of ["", undefined, "https://claude.ai/code/session_x/../../logout", "https://evil.example/code/session_01",
+    "http://claude.ai/code/session_01", "https://claude.ai/code/cse_01"]) {
+    assert.equal(webSessionLink(bad), null, String(bad));
   }
 });

@@ -14,6 +14,13 @@ export function sessionLink(url: unknown, elsewhere = false, host = location.hos
   return typeof url === "string" && SESSION_LINK.test(url) && isHere(host) !== elsewhere ? url : null;
 }
 
+const WEB_SESSION_LINK = /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]{1,64}$/;
+
+/** The claude.ai page of a session Remote Control connects. It opens on any device: in the Claude app where one is
+ *  installed, else in the browser. */
+export const webSessionLink = (url: unknown): string | null =>
+  typeof url === "string" && WEB_SESSION_LINK.test(url) ? url : null;
+
 const NOTE_LINK = /^obsidian:\/\/open\?path=[^\s&#]+$/;
 
 /** The link that opens an Obsidian note in the Obsidian app. The note is a file on the thync computer, so only a page

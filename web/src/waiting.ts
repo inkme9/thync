@@ -4,6 +4,7 @@
 import { post } from "./api.ts";
 import { claimModal, closeDetail, detailBox, isModalOpen, modalTitle } from "./detail.ts";
 import { focus, refresh } from "./main.ts";
+import { appLink, openApp } from "./panel.ts";
 import { recall, remember, state } from "./state.ts";
 import { ago } from "./style.ts";
 import type { ApiNode, Waiting } from "./types.ts";
@@ -83,6 +84,13 @@ export function showWaiting(n: ApiNode): void {
     ok.disabled = false;
     note.textContent = r.status === 409 ? "세션이 더 이상 thync 의 답을 기다리지 않아요. 세션에서 답해 주세요." : "보내지 못했어요.";
   };
+  // Go to the session to answer there: its desktop app, or claude.ai (the Claude app on a phone) under Remote Control.
+  const link = appLink(n);
+  if (link) {
+    const go = el("button", "", `${link.app}에서 열기`);
+    go.onclick = () => { closeDetail(); openApp(link.url); };
+    row.append(go);
+  }
   row.append(show, ok);
   detailBox.replaceChildren(box, row);
 }
