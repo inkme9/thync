@@ -43,8 +43,8 @@ function cardView(c: ApiCard): HTMLDivElement {
   const acts = Object.assign(document.createElement("div"), { className: "acts" });
   acts.append(...[appButton(appNodeOf(c, state.data.nodes)) ?? appButton(state.data.nodes.find((n) => n.id === c.focus)),
     webButton(c.id), c.focus ? infoButton(c.focus) : null].filter((b): b is HTMLButtonElement => !!b));
-  el.append(title, sub, note, tags);
-  if (acts.childElementCount) el.append(acts);
+  // An empty note shows its "메모 추가" placeholder on hover; below the buttons, so they do not move under the pointer.
+  el.append(title, sub, ...(c.note ? [note] : []), tags, ...(acts.childElementCount ? [acts] : []), ...(c.note ? [] : [note]));
   el.onclick = (e) => {
     const url = opens(c);
     if (url) {  // the browser hands it to Obsidian; the page stays. e.detail: the second click of a double click

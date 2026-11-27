@@ -101,7 +101,7 @@ function item(n: ApiNode, main: string, sub: string, role: string, handoff = fal
   }
   acts.append(infoButton(n.id));
   // The hand-off button keeps its key when 맡기기 turns into 맡김, so keyboard focus stays on it.
-  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.classList.contains("hand") ? "hand" : b.classList.contains("app") ? "app" : b.classList.contains("web") ? "web" : b.classList.contains("detail") ? "detail" : b.textContent}`; });
+  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${["hand", "app", "web", "detail"].find((c) => b.classList.contains(c))}`; });
   return li;
 }
 
