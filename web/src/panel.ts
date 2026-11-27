@@ -47,10 +47,11 @@ export function appButton(n: ApiNode | undefined): HTMLButtonElement | null {
   if (!link) return null;
   const { url, app, note, web } = link;
   const btn = Object.assign(document.createElement("button"), { className: "info app",
-    title: web ? "claude.ai 에서 이 세션 열기 (Claude 앱이 있으면 앱)" : `${app} 앱에서 이 ${note ? "노트" : "세션"} 열기` });
+    title: web ? "claude.ai 에서 이 세션 열기" : `${app} 앱에서 이 ${note ? "노트" : "세션"} 열기` });
   // The icon of the app this computer opens the link with; its name when the hub has no icon for it.
-  const icon = Object.assign(document.createElement("img"), { src: `/app-icon/${app.toLowerCase()}`, alt: `${app} 앱` });
-  icon.onerror = () => icon.replaceWith(`${app} 앱`);
+  const name = web ? "claude.ai" : `${app} 앱`;
+  const icon = Object.assign(document.createElement("img"), { src: `/app-icon/${app.toLowerCase()}`, alt: name });
+  icon.onerror = () => icon.replaceWith(name);
   btn.append(icon);
   btn.onclick = (e) => { e.stopPropagation(); openApp(url); };
   btn.ondblclick = (e) => e.stopPropagation();
