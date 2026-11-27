@@ -1,7 +1,8 @@
 // The side panel: what I focus on, background work, review requests, my PRs under review.
-// Clicking an item highlights it on the brain; only its 상세 button opens the detail modal. A row of the three
+// Clicking an item highlights it on the brain; only its ⓘ (상세 보기) button opens the detail modal. A row of the three
 // review lists is handed to Claude with its 맡기기 button or by dragging it onto the spine (reflex.ts).
-import { openDetail } from "./detail.ts";
+import { prLink } from "./card.ts";
+import { openDetail, openOnce } from "./detail.ts";
 import { focus } from "./main.ts";
 import { noteLink, sessionLink } from "./link.ts";
 import { openReflex, runningHandoff } from "./reflex.ts";
@@ -21,8 +22,14 @@ export function setStatus(text: string, title = ""): void {
   statusLine.title = title;
 }
 
+const INFO = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">'
+  + '<circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4.3" stroke-width="1.5" stroke-linecap="round"/>'
+  + '<circle cx="8" cy="4.9" r=".55" fill="currentColor" stroke="none"/></svg>';
+
+/** The ⓘ button that opens the detail modal (상세 보기). */
 export function infoButton(id: string): HTMLButtonElement {
-  const btn = Object.assign(document.createElement("button"), { className: "info", textContent: "상세", title: "상세 보기" });
+  const btn = Object.assign(document.createElement("button"), { className: "info detail", innerHTML: INFO, title: "상세 보기" });
+  btn.setAttribute("aria-label", "상세 보기");
   btn.onclick = (e) => { e.stopPropagation(); focus(id); openDetail(id); };
   btn.ondblclick = (e) => e.stopPropagation();
   return btn;
@@ -47,17 +54,32 @@ export function appButton(n: ApiNode | undefined): HTMLButtonElement | null {
   return btn;
 }
 
+const GLOBE = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">'
+  + '<circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="2.8" ry="6.5"/><path d="M1.5 8h13M2.7 4.5h10.6M2.7 11.5h10.6"/></svg>';
+
+/** A button that opens the PR on GitHub, for a PR row or card (a review request, my PR, a hand-off); null for others. */
+export function webButton(id: string): HTMLButtonElement | null {
+  const url = prLink({ id });
+  if (!url) return null;
+  const btn = Object.assign(document.createElement("button"), { className: "info web", innerHTML: GLOBE, title: "브라우저에서 PR 열기" });
+  btn.setAttribute("aria-label", "브라우저에서 PR 열기");
+  btn.onclick = (e) => { e.stopPropagation(); openOnce(url); };
+  btn.ondblclick = (e) => e.stopPropagation();
+  return btn;
+}
+
 /** The drag type a review-list row carries, so the board's own card drops ignore it. */
 export const NODE_DRAG = "application/x-thync-node";
 let dragging = false; // the 2 s refresh would replace the row being dragged
 
 function item(n: ApiNode, main: string, sub: string, role: string, handoff = false, key = main): HTMLLIElement {
   const li = Object.assign(document.createElement("li"), { className: role });
+  // The buttons get a line of their own under the row, so the text keeps the row's full width.
+  const acts = Object.assign(document.createElement("div"), { className: "acts" });
   li.append(Object.assign(document.createElement("div"), { className: "main", textContent: main }),
-    Object.assign(document.createElement("div"), { className: "sub", textContent: sub }), infoButton(n.id));
+    Object.assign(document.createElement("div"), { className: "sub", textContent: sub }), acts);
   li.onclick = () => focus(n.id);
-  const app = appButton(n);
-  if (app) li.append(app);
+  acts.append(...[appButton(n), webButton(n.id)].filter((b): b is HTMLButtonElement => !!b));
   const running = handoff && state.data.handoff ? runningHandoff(n) : undefined;
   if (running) {
     // Handed off and still running: say so instead of offering it again.
@@ -66,19 +88,20 @@ function item(n: ApiNode, main: string, sub: string, role: string, handoff = fal
     tag.setAttribute("aria-disabled", "true");
     tag.onclick = (e) => e.stopPropagation();
     tag.ondblclick = (e) => e.stopPropagation();
-    li.append(tag);
+    acts.append(tag);
   } else if (handoff && state.data.handoff) {
     const btn = Object.assign(document.createElement("button"), { className: "info hand", textContent: "맡기기",
       title: "Claude 에게 맡기기 (확인 창이 열려요)" });
     btn.onclick = (e) => { e.stopPropagation(); openReflex(n.id); };
     btn.ondblclick = (e) => e.stopPropagation();
-    li.append(btn);
+    acts.append(btn);
     li.draggable = true;
     li.ondragstart = (e) => { dragging = true; e.dataTransfer!.setData(NODE_DRAG, n.id); e.dataTransfer!.effectAllowed = "link"; };
     li.ondragend = () => { dragging = false; };
   }
+  acts.append(infoButton(n.id));
   // The hand-off button keeps its key when 맡기기 turns into 맡김, so keyboard focus stays on it.
-  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.classList.contains("hand") ? "hand" : b.classList.contains("app") ? "app" : b.textContent}`; });
+  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${["hand", "app", "web", "detail"].find((c) => b.classList.contains(c))}`; });
   return li;
 }
 
@@ -125,7 +148,7 @@ export function renderPanel(): void {
     `${String(n.detail.review_state)}${n.detail.reviewers ? ` · 대기: ${n.detail.reviewers}` : ""} · ${ago(Date.parse(String(n.detail.updated)) / 1000)}`, "sent", true)),
     "리뷰를 기다리는 내 PR 없음");
 
-  // Reviews others left on my PRs, newest first. Clicking shows the PR; its 상세 button opens the full reviews.
+  // Reviews others left on my PRs, newest first. Clicking shows the PR; its ⓘ button opens the full reviews.
   const shownById = new Map(visible.map((n) => [n.id, n]));
   const received = (state.data.received ?? []).filter((r) => shownById.has(r.pr));
   list(receivedList, received.map((r) => {

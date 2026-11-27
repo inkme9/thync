@@ -115,8 +115,7 @@
     li.received.changes .main::before { color: #ff8a70; }
     li.focus .main::before, li.running .main::before, li.review .main::before { content: "● "; }
     li.focus .main::before { color: #ffcf6b; } li.running .main::before { color: #6be3ff; } li.review .main::before { color: #ff8a70; }
-    li { position: relative; padding-right: 56px; }
-    button.info { position: absolute; top: 8px; right: 8px; height: 24px; padding: 0 9px; display: inline-flex; align-items: center;
+    button.info { height: 24px; padding: 0 9px; display: inline-flex; align-items: center;
       background: none; border: 1px solid var(--line); border-radius: 6px; color: var(--quiet);
       font: 11px "JetBrains Mono", Menlo, monospace; letter-spacing: .06em; cursor: pointer;
       transition: color .12s, border-color .12s, background .12s; }
@@ -124,18 +123,11 @@
     button.info:hover { color: var(--glow) !important; border-color: rgba(255, 207, 107, .6) !important;
       background: rgba(255, 207, 107, .08); }
     button.info:focus-visible { outline: 1px solid var(--glow); outline-offset: 2px; }
-    .card { position: relative; padding-right: 56px; }
-    button.info.hand, button.info.app, button.info.web { right: 56px; }
+    .acts { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
     button.info.hand.running, button.info.hand.running:hover { color: var(--quiet) !important; border-color: var(--line) !important; cursor: default; }
-    li:has(button.hand) { padding-right: 116px; }
     button.info.app { padding: 0 4px; }
     button.info.app img { width: 16px; height: 16px; display: block; }
-    li:has(button.app), .card:has(button.app) { padding-right: 90px; }
-    button.info.web { padding: 0 5px; }
-    button.info.web.alone { right: 8px; }
-    .card:has(button.web) { padding-right: 90px; }
-    .card:has(button.web) button.app { right: 88px; }
-    .card:has(button.web):has(button.app) { padding-right: 122px; }
+    button.info.web, button.info.detail { padding: 0 5px; }
     li[draggable="true"] { cursor: grab; }
     #detail div.handoff { display: block; border-top: 0; padding: 0; }
     #spine-target { position: absolute; display: none; pointer-events: none; overflow: visible; }

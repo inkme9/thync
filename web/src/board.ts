@@ -1,11 +1,10 @@
 // The kanban board under the brain. Cards are dragged between columns (a hand-set column wins over the
 // automatic one) and edited in place: double-click a title or a note. Each card is a Markdown file on the
 // server. Also here: view modes (brain + board / brain / board), the resize handle, and "+ 카드".
-import { appNodeOf, droppable, editable, opens, prLink } from "./card.ts";
+import { appNodeOf, droppable, editable, opens } from "./card.ts";
 import { post } from "./api.ts";
-import { openOnce } from "./detail.ts";
 import { focus, refresh } from "./main.ts";
-import { appButton, infoButton } from "./panel.ts";
+import { appButton, infoButton, webButton } from "./panel.ts";
 import { openReflex, reflexTargets } from "./reflex.ts";
 import { showWaiting } from "./waiting.ts";
 import { inProfile, recall, remember, state } from "./state.ts";
@@ -18,22 +17,6 @@ const COLUMN_NAME: Record<string, string> = { waiting: "선택 대기", todo: "T
 let busy = false; // while dragging or editing, the 2 s refresh must not redraw the cards
 
 const saveCard = (body: Record<string, unknown>) => post("/board", body);
-
-const GLOBE = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">'
-  + '<circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="2.8" ry="6.5"/><path d="M1.5 8h13M2.7 4.5h10.6M2.7 11.5h10.6"/></svg>';
-
-/** A button that opens the card's PR on GitHub, for the card of a review request, my PR or a hand-off. */
-function webButton(c: ApiCard): HTMLButtonElement | null {
-  const url = prLink(c);
-  if (!url) return null;
-  // A hand-off card whose PR and session are gone has no 상세 button; the globe then takes its place.
-  const btn = Object.assign(document.createElement("button"), { className: c.focus ? "info web" : "info web alone", innerHTML: GLOBE,
-    title: "브라우저에서 PR 열기" });
-  btn.setAttribute("aria-label", "브라우저에서 PR 열기");
-  btn.onclick = (e) => { e.stopPropagation(); openOnce(url); };
-  btn.ondblclick = (e) => e.stopPropagation();
-  return btn;
-}
 
 function cardView(c: ApiCard): HTMLDivElement {
   const mine = editable(c);
@@ -54,14 +37,14 @@ function cardView(c: ApiCard): HTMLDivElement {
     moved.onclick = async (e) => { e.stopPropagation(); await saveCard({ id: c.id, reset: true }); await refresh(); };
     tags.append(moved);
   }
-  el.append(title, sub, note, tags);
-  if (c.focus) el.prepend(infoButton(c.focus));
-  // The card's latest session when a desktop app runs it, or its Obsidian note when that is newer. A note opens only
-  // from a page on the thync computer; elsewhere the session's button stays.
-  const app = appButton(appNodeOf(c, state.data.nodes)) ?? appButton(state.data.nodes.find((n) => n.id === c.focus));
-  if (app) el.prepend(app);
-  const web = webButton(c);
-  if (web) el.prepend(web);
+  // The buttons get a line of their own under the card, so the title keeps the card's full width.
+  // App: the card's latest session when a desktop app runs it, or its Obsidian note when that is newer. A note opens
+  // only from a page on the thync computer; elsewhere the session's button stays.
+  const acts = Object.assign(document.createElement("div"), { className: "acts" });
+  acts.append(...[appButton(appNodeOf(c, state.data.nodes)) ?? appButton(state.data.nodes.find((n) => n.id === c.focus)),
+    webButton(c.id), c.focus ? infoButton(c.focus) : null].filter((b): b is HTMLButtonElement => !!b));
+  // An empty note shows its "메모 추가" placeholder on hover; below the buttons, so they do not move under the pointer.
+  el.append(title, sub, ...(c.note ? [note] : []), tags, ...(acts.childElementCount ? [acts] : []), ...(c.note ? [] : [note]));
   el.onclick = (e) => {
     const url = opens(c);
     if (url) {  // the browser hands it to Obsidian; the page stays. e.detail: the second click of a double click
