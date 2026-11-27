@@ -196,7 +196,7 @@ Obsidian 노트 본문의 Jira 키는 작업 단위를 정하지 않고 티켓�
 | `POST /answer` | `{id, answers[]}` | 화면에서 고른 답을 hook 에 넘깁니다. hook 이 기다리지 않는 질문이면 `409` |
 | `POST /board` | `{id, column?, title?, note?, reset?}` 또는 `{new: true, title, column?, profile?}` | 카드 파일을 고치거나 새 카드를 만듭니다 |
 | `POST /reflex` | `{id \| node, check: true}` 또는 `{id \| node, plan}` | `check`는 실행할 계획(`plan`)을 돌려주고 아무것도 시작하지 않습니다. `plan`을 보내면 다시 확인하고, 계정·프로필·작업이 같을 때만 시작합니다. `reflex_host`가 있으면 노드를 그 서버로 한 번 넘기고, 넘겨받은 서버는 `node`를 그대로 씁니다 |
-| `GET /sessions.json?days=` | 없음 | 다른 서버의 허브가 1.5초마다 읽습니다. `sessions[]`(세션 하나에 `id`, `source`, `cwd`, `branch`, `title`, `ai_title`, `prompts`(첫 프롬프트, 최근 집중 창 안의 프롬프트, 마지막 프롬프트), `prs`, `files`(최근 1시간), `events`(최근 활동 창), `claude_turn`, `waiting`, `last_at`, `last`, `subs`, `profile`, `repo`, `reflex`, `answerable`)과 `reflexes`(이 서버가 실행하는 PR 위임과 `alive`(tmux 세션 있음), `exit`(종료 코드)). `ETag`가 같으면 `304`, `Accept-Encoding: gzip`이면 압축합니다 |
+| `GET /sessions.json?days=` | 없음 | 다른 서버의 허브가 1.5초마다 읽습니다. `sessions[]`(세션 하나에 `id`, `source`, `cwd`, `branch`, `title`, `ai_title`, `prompts`(첫 프롬프트, 최근 집중 창 안의 프롬프트, 마지막 프롬프트), `prs`, `files`(최근 1시간), `events`(최근 활동 창), `web_url`(Remote Control 이 연결된 세션의 claude.ai 주소), `claude_turn`, `waiting`, `last_at`, `last`, `subs`, `profile`, `repo`, `reflex`, `answerable`)과 `reflexes`(이 서버가 실행하는 PR 위임과 `alive`(tmux 세션 있음), `exit`(종료 코드)). `ETag`가 같으면 `304`, `Accept-Encoding: gzip`이면 압축합니다 |
 
 허브가 다른 서버로 넘기는 요청(`/answer`, `/reflex`)에는 `X-Thync-Forwarded: 1`이 붙고, 받은 서버는 그 요청을 다시 넘기지 않습니다. 다른 서버 세션의 질문에 대한 `POST /answer`는 그 서버로 넘어가, 그 서버의 질문 hook 이 답을 가져갑니다.
 

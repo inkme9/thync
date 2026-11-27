@@ -4,7 +4,8 @@
 import { post } from "./api.ts";
 import { claimModal, closeDetail, detailBox, isModalOpen, modalTitle } from "./detail.ts";
 import { focus, refresh } from "./main.ts";
-import { appLink, openApp } from "./panel.ts";
+import { appLink } from "./link.ts";
+import { openApp } from "./panel.ts";
 import { recall, remember, state } from "./state.ts";
 import { ago } from "./style.ts";
 import type { ApiNode, Waiting } from "./types.ts";

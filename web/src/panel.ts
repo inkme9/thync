@@ -4,7 +4,7 @@
 import { prLink } from "./card.ts";
 import { openDetail, openOnce } from "./detail.ts";
 import { focus } from "./main.ts";
-import { linkKind, noteLink, sessionLink, webSessionLink } from "./link.ts";
+import { appLink, linkKind } from "./link.ts";
 import { openReflex, runningHandoff } from "./reflex.ts";
 import { isSource, shown, state } from "./state.ts";
 import { REVIEW_STATE, ago, cut } from "./style.ts";
@@ -35,16 +35,6 @@ export function infoButton(id: string): HTMLButtonElement {
   return btn;
 }
 
-/** Where a session or note opens: the desktop app it runs in or Obsidian, when that app is next to this browser
- *  (link.ts); else the claude.ai page of a session Remote Control connects, which opens on a phone or tablet too.
- *  Null when nothing here can open it. */
-export function appLink(n: ApiNode | undefined): { url: string; app: string; note: boolean } | null {
-  const note = n?.kind === "dailyNote" ? noteLink(n.detail.url) : null;
-  const url = note ?? sessionLink(n?.detail.app_url, Boolean(n?.detail.app_elsewhere)) ?? webSessionLink(n?.detail.web_url);
-  if (!url) return null;
-  return { url, app: note ? "Obsidian" : url.startsWith("codex:") ? "Codex" : "Claude", note: !!note };
-}
-
 /** Opens an app link: the browser hands an app's own scheme to the app; a claude.ai page opens in its own tab. */
 export function openApp(url: string): void {
   if (linkKind(url) === "web") openOnce(url);
@@ -55,9 +45,9 @@ export function openApp(url: string): void {
 export function appButton(n: ApiNode | undefined): HTMLButtonElement | null {
   const link = appLink(n);
   if (!link) return null;
-  const { url, app, note } = link;
+  const { url, app, note, web } = link;
   const btn = Object.assign(document.createElement("button"), { className: "info app",
-    title: `${app} 앱에서 이 ${note ? "노트" : "세션"} 열기` });
+    title: web ? "claude.ai 에서 이 세션 열기 (Claude 앱이 있으면 앱)" : `${app} 앱에서 이 ${note ? "노트" : "세션"} 열기` });
   // The icon of the app this computer opens the link with; its name when the hub has no icon for it.
   const icon = Object.assign(document.createElement("img"), { src: `/app-icon/${app.toLowerCase()}`, alt: `${app} 앱` });
   icon.onerror = () => icon.replaceWith(`${app} 앱`);
