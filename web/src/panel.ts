@@ -1,5 +1,5 @@
 // The side panel: what I focus on, background work, review requests, my PRs under review.
-// Clicking an item highlights it on the brain; only its 상세 button opens the detail modal. A row of the three
+// Clicking an item highlights it on the brain; only its ⓘ (상세 보기) button opens the detail modal. A row of the three
 // review lists is handed to Claude with its 맡기기 button or by dragging it onto the spine (reflex.ts).
 import { prLink } from "./card.ts";
 import { openDetail, openOnce } from "./detail.ts";
@@ -22,8 +22,14 @@ export function setStatus(text: string, title = ""): void {
   statusLine.title = title;
 }
 
+const INFO = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">'
+  + '<circle cx="8" cy="8" r="6.5"/><path d="M8 7.2v4.3" stroke-width="1.5" stroke-linecap="round"/>'
+  + '<circle cx="8" cy="4.9" r=".55" fill="currentColor" stroke="none"/></svg>';
+
+/** The ⓘ button that opens the detail modal (상세 보기). */
 export function infoButton(id: string): HTMLButtonElement {
-  const btn = Object.assign(document.createElement("button"), { className: "info", textContent: "상세", title: "상세 보기" });
+  const btn = Object.assign(document.createElement("button"), { className: "info detail", innerHTML: INFO, title: "상세 보기" });
+  btn.setAttribute("aria-label", "상세 보기");
   btn.onclick = (e) => { e.stopPropagation(); focus(id); openDetail(id); };
   btn.ondblclick = (e) => e.stopPropagation();
   return btn;
@@ -95,7 +101,7 @@ function item(n: ApiNode, main: string, sub: string, role: string, handoff = fal
   }
   acts.append(infoButton(n.id));
   // The hand-off button keeps its key when 맡기기 turns into 맡김, so keyboard focus stays on it.
-  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.classList.contains("hand") ? "hand" : b.classList.contains("app") ? "app" : b.classList.contains("web") ? "web" : b.textContent}`; });
+  li.querySelectorAll("button").forEach((b) => { b.dataset.key = `${role}|${n.id}|${key}|${b.classList.contains("hand") ? "hand" : b.classList.contains("app") ? "app" : b.classList.contains("web") ? "web" : b.classList.contains("detail") ? "detail" : b.textContent}`; });
   return li;
 }
 
@@ -142,7 +148,7 @@ export function renderPanel(): void {
     `${String(n.detail.review_state)}${n.detail.reviewers ? ` · 대기: ${n.detail.reviewers}` : ""} · ${ago(Date.parse(String(n.detail.updated)) / 1000)}`, "sent", true)),
     "리뷰를 기다리는 내 PR 없음");
 
-  // Reviews others left on my PRs, newest first. Clicking shows the PR; its 상세 button opens the full reviews.
+  // Reviews others left on my PRs, newest first. Clicking shows the PR; its ⓘ button opens the full reviews.
   const shownById = new Map(visible.map((n) => [n.id, n]));
   const received = (state.data.received ?? []).filter((r) => shownById.has(r.pr));
   list(receivedList, received.map((r) => {
